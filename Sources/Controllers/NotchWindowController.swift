@@ -1,0 +1,262 @@
+import AppKit
+import SwiftUI
+import Combine
+
+// MARK: - Display State
+
+/// 灵动岛显示阶段：闲置 / 紧凑 / 展开 / 设置
+enum NotchDisplayState: Equatable {
+    case idle      // 计时器空闲，最小指示器
+    case compact   // 计时进行中，紧凑信息
+    case expanded  // 悬停或点击展开，完整控制面板
+    case settings  // 设置面板
+
+    /// 对应窗口尺寸（与硬件刘海上沿对齐，向下生长）
+    var windowSize: NSSize {
+        switch self {
+        case .idle:
+            // 与紧凑状态同宽，使用翼布局展示「准备开始」状态
+            return NSSize(width: 350, height: 38)
+        case .compact:
+            // 必须显著宽于硬件刘海（≈180pt），让左右翼内容露出
+            return NSSize(width: 350, height: 38)
+        case .expanded:
+            return NSSize(width: 360, height: 200)
+        case .settings:
+            return NSSize(width: 380, height: 420)
+        }
+    }
+}
+
+// MARK: - View Model
+
+/// 刘海视图共享状态：被 SwiftUI 视图与 NSWindowController 同时观察
+final class NotchViewModel: ObservableObject {
+    /// 用户主动点击展开（持久状态，需用户再次点击或鼠标离开后撤销）
+    @Published var isPinnedExpanded: Bool = false
+    /// 鼠标悬停（带延迟去抖）
+    @Published var isHovering: Bool = false
+    /// 是否打开设置面板（最高优先级，强制进入 .settings 态）
+    @Published var showSettings: Bool = false
+    /// 计时器是否处于活跃状态
+    @Published private(set) var isTimerActive: Bool = false
+    /// 冷启动就绪标志：用于在窗口初始定位完成前忽略悬停展开
+    @Published private(set) var isReady: Bool = false
+    /// 派生状态，驱动窗口尺寸与视图布局
+    @Published private(set) var displayState: NotchDisplayState = .idle
+
+    private var cancellables = Set<AnyCancellable>()
+
+    init(timer: PomodoroTimer) {
+        // 监听 timer 状态以更新 isTimerActive
+        timer.$status
+            .map { $0 != .idle }
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .assign(to: &$isTimerActive)
+
+        // 四态合并：设置 > 展开 > 紧凑 > 闲置；冷启动期间屏蔽 hover
+        Publishers.CombineLatest(
+            Publishers.CombineLatest4($isPinnedExpanded, $isHovering, $isTimerActive, $showSettings),
+            $isReady
+        )
+            .map { quad, ready -> NotchDisplayState in
+                let (pinned, hovering, active, settings) = quad
+                if settings { return .settings }
+                if pinned || (hovering && ready) { return .expanded }
+                if active { return .compact }
+                return .idle
+            }
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .assign(to: &$displayState)
+
+        // 延迟开启 hover 响应，避免冷启动时鼠标恰好处于刘海区域而立即展开
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.isHovering = false  // 清除冷启动期间积累的悬停状态
+            self?.isReady = true
+        }
+    }
+
+    /// 切换点击展开
+    func toggleExpansion() {
+        isPinnedExpanded.toggle()
+    }
+
+    /// 打开设置面板
+    func openSettings() {
+        showSettings = true
+    }
+
+    /// 关闭设置面板
+    func closeSettings() {
+        showSettings = false
+    }
+
+    /// 收起所有展开状态（用于按钮触发后回到刘海形态）
+    func collapse() {
+        isPinnedExpanded = false
+        isHovering = false
+        showSettings = false
+    }
+}
+
+// MARK: - Window Controller
+
+/// 刘海区域窗口控制器：负责窗口构造、置顶定位与跟随 ViewModel 动态调整尺寸
+final class NotchWindowController: NSWindowController {
+    private let timer: PomodoroTimer
+    private let viewModel: NotchViewModel
+    private var cancellables = Set<AnyCancellable>()
+
+    init(timer: PomodoroTimer) {
+        self.timer = timer
+        self.viewModel = NotchViewModel(timer: timer)
+
+        let initialSize = viewModel.displayState.windowSize
+        let window = NotchWindow(
+            contentRect: NSRect(origin: .zero, size: initialSize),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+
+        // 完全透明的承载窗口；视觉外观由 SwiftUI 中的自定义 Shape 提供
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.hasShadow = false
+        // 高于菜单栏，与系统刘海视觉无缝衔接
+        window.level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 1)
+        window.collectionBehavior = [
+            .canJoinAllSpaces,
+            .fullScreenAuxiliary,
+            .stationary,
+            .ignoresCycle
+        ]
+        window.isMovable = false
+        window.hidesOnDeactivate = false
+        window.acceptsMouseMovedEvents = true
+
+        super.init(window: window)
+
+        setupHostingController()
+        bindViewModel()
+        repositionWindow(animated: false)
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(screenParametersChanged),
+            name: NSApplication.didChangeScreenParametersNotification,
+            object: nil
+        )
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    // MARK: - Setup
+
+    private func setupHostingController() {
+        guard let window = window else { return }
+
+        let root = NotchRootView(timer: timer, viewModel: viewModel)
+        let hosting = NSHostingController(rootView: root)
+        // 让 hosting view 自适应容器，由窗口尺寸驱动 SwiftUI 布局
+        if #available(macOS 13.0, *) {
+            hosting.sizingOptions = []
+        }
+        hosting.view.wantsLayer = true
+        hosting.view.layer?.backgroundColor = NSColor.clear.cgColor
+        hosting.view.autoresizingMask = [.width, .height]
+        window.contentViewController = hosting
+    }
+
+    private func bindViewModel() {
+        viewModel.$displayState
+            .removeDuplicates()
+            .dropFirst() // 初始化时已通过 repositionWindow 设置过
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.repositionWindow(animated: true)
+            }
+            .store(in: &cancellables)
+    }
+
+    // MARK: - Geometry
+
+    @objc private func screenParametersChanged() {
+        repositionWindow(animated: false)
+    }
+
+    /// 计算并应用窗口 frame：顶边贴合屏幕顶端，向下生长
+    private func repositionWindow(animated: Bool) {
+        guard let window = window, let screen = targetScreen() else { return }
+
+        let size = viewModel.displayState.windowSize
+        let screenFrame = screen.frame
+        let originX = screenFrame.midX - size.width / 2
+        // NSWindow 坐标原点在左下；让顶边对齐 screenFrame.maxY
+        let originY = screenFrame.maxY - size.height
+        let newFrame = NSRect(x: originX, y: originY, width: size.width, height: size.height)
+
+        if animated {
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.32
+                ctx.timingFunction = CAMediaTimingFunction(
+                    controlPoints: 0.22, 0.88, 0.32, 1.0 // 更接近自然弹性的强 ease-out
+                )
+                ctx.allowsImplicitAnimation = true
+                window.animator().setFrame(newFrame, display: true)
+            }
+        } else {
+            window.setFrame(newFrame, display: true)
+        }
+    }
+
+    /// 优先使用包含鼠标的屏幕，避免多显示器环境下错位
+    private func targetScreen() -> NSScreen? {
+        let mouseLocation = NSEvent.mouseLocation
+        if let screen = NSScreen.screens.first(where: { NSMouseInRect(mouseLocation, $0.frame, false) }) {
+            return screen
+        }
+        return NSScreen.main
+    }
+
+    // MARK: - Visibility
+
+    func show() {
+        window?.orderFrontRegardless()
+    }
+
+    func hide() {
+        window?.orderOut(nil)
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+}
+
+// MARK: - NotchWindow
+
+/// 自定义 NSPanel：允许成为 key window 以响应内部按钮点击，但不抢占主窗口语义
+final class NotchWindow: NSPanel {
+    /// 关键修复：允许成为 key window，否则面板内的 SwiftUI 按钮无法接收点击
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { false }
+}
+
+// MARK: - SwiftUI Root
+
+/// SwiftUI 根容器：承担 ViewModel 注入与全宽填充
+struct NotchRootView: View {
+    @ObservedObject var timer: PomodoroTimer
+    @ObservedObject var viewModel: NotchViewModel
+
+    var body: some View {
+        NotchView(timer: timer, viewModel: viewModel)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .ignoresSafeArea()
+    }
+}
