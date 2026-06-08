@@ -29,6 +29,9 @@ cp "Sources/App/Info.plist" "${CONTENTS_DIR}/"
 # 复制 entitlements（用于签名）
 cp "Sources/App/NotchPomodoro.entitlements" "${CONTENTS_DIR}/"
 
+# 复制应用图标
+cp "Sources/Resources/AppIcon.icns" "${RESOURCES_DIR}/"
+
 echo "✅ 构建完成: ${APP_BUNDLE}"
 echo ""
 echo "运行方式:"
