@@ -10,6 +10,11 @@ class PomodoroTimer: ObservableObject {
     @Published var currentRound: Int = 1
     @Published var isPaused: Bool = false
     @Published var pendingBreak: Bool = false  // 下一步应为休息
+    @Published var didCompleteWork: Bool = false
+    
+    @Published var todayFocusMinutes: Int = 0
+    @Published var todayBreakMinutes: Int = 0
+    @Published var todayCompletedSessions: Int = 0
     
     // MARK: - Configuration
     @Published var config: PomodoroConfig {
@@ -74,12 +79,14 @@ class PomodoroTimer: ObservableObject {
         self.config = PomodoroConfig.default
         self.timeRemaining = PomodoroConfig.default.workDuration
         loadConfig()
+        refreshTodayStats()
     }
     
     // MARK: - Public Methods
     
     /// 开始工作
     func startWork() {
+        didCompleteWork = false
         pendingBreak = false
         stop()
         status = .working
@@ -92,6 +99,7 @@ class PomodoroTimer: ObservableObject {
     
     /// 开始休息
     func startBreak() {
+        didCompleteWork = false
         pendingBreak = false
         stop()
         let isLongBreak = currentRound > config.roundsBeforeLongBreak
@@ -133,6 +141,7 @@ class PomodoroTimer: ObservableObject {
                 completed: timeRemaining == 0
             )
             saveSession(session)
+            refreshTodayStats()
             sessionStartTime = nil
         }
         
@@ -161,6 +170,7 @@ class PomodoroTimer: ObservableObject {
                 completed: true
             )
             saveSession(session)
+            refreshTodayStats()
             sessionStartTime = nil
         }
         
@@ -194,6 +204,25 @@ class PomodoroTimer: ObservableObject {
     /// 重置轮次
     func resetRounds() {
         currentRound = 1
+    }
+    
+    /// 刷新今日统计数据
+    func refreshTodayStats() {
+        let sessions = loadSessions()
+        let calendar = Calendar.current
+        let todaySessions = sessions.filter { calendar.isDateInToday($0.startTime) }
+        
+        todayFocusMinutes = todaySessions
+            .filter { $0.type == .working }
+            .reduce(0) { $0 + Int($1.endTime.timeIntervalSince($1.startTime)) } / 60
+        
+        todayBreakMinutes = todaySessions
+            .filter { $0.type == .shortBreak || $0.type == .longBreak }
+            .reduce(0) { $0 + Int($1.endTime.timeIntervalSince($1.startTime)) } / 60
+        
+        todayCompletedSessions = todaySessions
+            .filter { $0.type == .working && $0.completed }
+            .count
     }
     
     // MARK: - Private Methods
@@ -265,6 +294,7 @@ class PomodoroTimer: ObservableObject {
                 completed: true
             )
             saveSession(session)
+            refreshTodayStats()
             sessionStartTime = nil
         }
         
@@ -274,6 +304,7 @@ class PomodoroTimer: ObservableObject {
         // 自动切换或等待
         if completedStatus == .working {
             currentRound += 1
+            didCompleteWork = true
             if config.autoStartBreak {
                 startBreak()
             } else {

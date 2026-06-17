@@ -62,17 +62,6 @@ struct SettingsView: View {
                                  isOn: $timer.config.autoStartWork)
                     }
                     
-                    // 显示设置
-                    SettingsSection(title: "显示设置", icon: "display") {
-                        ToggleRow(title: "刘海区域显示",
-                                 subtitle: "在屏幕刘海区域显示计时器",
-                                 isOn: $timer.config.showInNotch)
-                        
-                        ToggleRow(title: "菜单栏显示",
-                                 subtitle: "在菜单栏显示计时器状态",
-                                 isOn: $timer.config.showInMenuBar)
-                    }
-                    
                     // 关于
                     SettingsSection(title: "关于", icon: "info.circle") {
                         HStack {

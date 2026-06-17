@@ -10,6 +10,7 @@ enum NotchDisplayState: Equatable {
     case compact   // 计时进行中，紧凑信息
     case expanded  // 悬停或点击展开，完整控制面板
     case settings  // 设置面板
+    case breakPrompt  // 休息提示弹窗（半高）
 
     /// 对应窗口尺寸（与硬件刘海上沿对齐，向下生长）
     var windowSize: NSSize {
@@ -21,9 +22,11 @@ enum NotchDisplayState: Equatable {
             // 必须显著宽于硬件刘海（≈180pt），让左右翼内容露出
             return NSSize(width: 350, height: 38)
         case .expanded:
-            return NSSize(width: 360, height: 200)
+            return NSSize(width: 360, height: 240)
         case .settings:
             return NSSize(width: 380, height: 420)
+        case .breakPrompt:
+            return NSSize(width: 360, height: 180)
         }
     }
 }
@@ -32,6 +35,8 @@ enum NotchDisplayState: Equatable {
 
 /// 刘海视图共享状态：被 SwiftUI 视图与 NSWindowController 同时观察
 final class NotchViewModel: ObservableObject {
+    /// 已连接的显示器名称列表（由 NotchDisplayManager 设置，供设置界面使用）
+    @Published var connectedDisplays: [String] = []
     /// 用户主动点击展开（持久状态，需用户再次点击或鼠标离开后撤销）
     @Published var isPinnedExpanded: Bool = false
     /// 鼠标悬停（带延迟去抖）
@@ -44,6 +49,9 @@ final class NotchViewModel: ObservableObject {
     @Published private(set) var isReady: Bool = false
     /// 派生状态，驱动窗口尺寸与视图布局
     @Published private(set) var displayState: NotchDisplayState = .idle
+    /// 是否显示休息提示（工作完成后自动触发，5秒后消失）
+    @Published var showBreakPrompt: Bool = false
+    private var breakPromptDismissWork: DispatchWorkItem?
 
     private var cancellables = Set<AnyCancellable>()
 
@@ -55,14 +63,25 @@ final class NotchViewModel: ObservableObject {
             .receive(on: RunLoop.main)
             .assign(to: &$isTimerActive)
 
-        // 四态合并：设置 > 展开 > 紧凑 > 闲置；冷启动期间屏蔽 hover
-        Publishers.CombineLatest(
+        // 工作完成时触发休息提示
+        timer.$didCompleteWork
+            .filter { $0 == true }
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.triggerBreakPrompt()
+            }
+            .store(in: &cancellables)
+
+        // 多态合并：设置 > 休息提示 > 展开 > 紧凑 > 闲置；冷启动期间屏蔽 hover
+        Publishers.CombineLatest3(
             Publishers.CombineLatest4($isPinnedExpanded, $isHovering, $isTimerActive, $showSettings),
-            $isReady
+            $isReady,
+            $showBreakPrompt
         )
-            .map { quad, ready -> NotchDisplayState in
+            .map { quad, ready, breakPrompt -> NotchDisplayState in
                 let (pinned, hovering, active, settings) = quad
                 if settings { return .settings }
+                if breakPrompt { return .breakPrompt }
                 if pinned || (hovering && ready) { return .expanded }
                 if active { return .compact }
                 return .idle
@@ -99,6 +118,23 @@ final class NotchViewModel: ObservableObject {
         isHovering = false
         showSettings = false
     }
+
+    /// 触发休息提示（5秒后自动消失）
+    func triggerBreakPrompt() {
+        showBreakPrompt = true
+        breakPromptDismissWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            self?.showBreakPrompt = false
+        }
+        breakPromptDismissWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0, execute: work)
+    }
+
+    /// 手动关闭休息提示
+    func dismissBreakPrompt() {
+        breakPromptDismissWork?.cancel()
+        showBreakPrompt = false
+    }
 }
 
 // MARK: - Window Controller
@@ -106,12 +142,14 @@ final class NotchViewModel: ObservableObject {
 /// 刘海区域窗口控制器：负责窗口构造、置顶定位与跟随 ViewModel 动态调整尺寸
 final class NotchWindowController: NSWindowController {
     private let timer: PomodoroTimer
-    private let viewModel: NotchViewModel
+    let viewModel: NotchViewModel
+    private var assignedScreen: NSScreen  // 分配的显示器（非 let，因为重连时对象可能变化）
     private var cancellables = Set<AnyCancellable>()
 
-    init(timer: PomodoroTimer) {
+    init(timer: PomodoroTimer, screen: NSScreen) {
         self.timer = timer
         self.viewModel = NotchViewModel(timer: timer)
+        self.assignedScreen = screen
 
         let initialSize = viewModel.displayState.windowSize
         let window = NotchWindow(
@@ -186,12 +224,16 @@ final class NotchWindowController: NSWindowController {
     // MARK: - Geometry
 
     @objc private func screenParametersChanged() {
-        repositionWindow(animated: false)
+        // 确认分配的屏幕仍然连接（frame 非零表示活跃）
+        if NSScreen.screens.contains(where: { $0 == assignedScreen }) {
+            repositionWindow(animated: false)
+        }
     }
 
     /// 计算并应用窗口 frame：顶边贴合屏幕顶端，向下生长
     private func repositionWindow(animated: Bool) {
-        guard let window = window, let screen = targetScreen() else { return }
+        guard let window = window else { return }
+        let screen = assignedScreen
 
         let size = viewModel.displayState.windowSize
         let screenFrame = screen.frame
@@ -214,13 +256,10 @@ final class NotchWindowController: NSWindowController {
         }
     }
 
-    /// 优先使用包含鼠标的屏幕，避免多显示器环境下错位
-    private func targetScreen() -> NSScreen? {
-        let mouseLocation = NSEvent.mouseLocation
-        if let screen = NSScreen.screens.first(where: { NSMouseInRect(mouseLocation, $0.frame, false) }) {
-            return screen
-        }
-        return NSScreen.main
+    /// 更新分配的显示器（用于显示器重连时同名屏幕对象可能变化）
+    func updateScreen(_ screen: NSScreen) {
+        assignedScreen = screen
+        repositionWindow(animated: false)
     }
 
     // MARK: - Visibility

@@ -17,8 +17,7 @@ struct PomodoroConfig: Codable {
     var roundsBeforeLongBreak: Int = 4    // 长休息前的轮数
     var autoStartBreak: Bool = false      // 自动开始休息
     var autoStartWork: Bool = false       // 自动开始工作
-    var showInNotch: Bool = true          // 在刘海区域显示
-    var showInMenuBar: Bool = true        // 在菜单栏显示
+    var selectedDisplayNames: [String] = [] // 选中的显示器名称（空 = 仅内建屏幕）
     
     static let `default` = PomodoroConfig()
 }

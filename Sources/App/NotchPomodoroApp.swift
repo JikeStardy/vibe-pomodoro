@@ -1,6 +1,5 @@
 import SwiftUI
 import UserNotifications
-import Combine
 
 @main
 struct NotchPomodoroApp: App {
@@ -15,7 +14,7 @@ struct NotchPomodoroApp: App {
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var timer: PomodoroTimer!
-    private var notchWindowController: NotchWindowController!
+    private var displayManager: NotchDisplayManager!
     
     func applicationDidFinishLaunching(_ notification: Notification) {
         // 请求通知权限
@@ -24,21 +23,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // 初始化番茄钟
         timer = PomodoroTimer()
         
-        // 初始化刘海窗口
-        notchWindowController = NotchWindowController(timer: timer)
-        
-        // 根据配置显示/隐藏刘海窗口
-        updateNotchVisibility()
-        
-        // 监听配置变化
-        timer.$config
-            .sink { [weak self] _ in
-                self?.updateNotchVisibility()
-            }
-            .store(in: &cancellables)
+        // 初始化多显示器刘海窗口管理器
+        displayManager = NotchDisplayManager(timer: timer)
     }
-    
-    private var cancellables = Set<AnyCancellable>()
     
     private func requestNotificationPermission() {
         // 延迟请求通知权限，确保 app bundle 已就绪
@@ -58,14 +45,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
             center.delegate = self
-        }
-    }
-    
-    private func updateNotchVisibility() {
-        if timer.config.showInNotch {
-            notchWindowController.show()
-        } else {
-            notchWindowController.hide()
         }
     }
     

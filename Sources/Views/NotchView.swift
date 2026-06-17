@@ -74,21 +74,6 @@ struct NotchView: View {
             // 主体：纯黑刘海形状，与硬件无缝衔接
             NotchShape(bottomCornerRadius: bottomRadius)
                 .fill(Color.black)
-                .overlay(
-                    // 底部细微高光，营造软塑感
-                    NotchShape(bottomCornerRadius: bottomRadius)
-                        .stroke(
-                            LinearGradient(
-                                colors: [
-                                    Color.white.opacity(0.06),
-                                    Color.white.opacity(0.0)
-                                ],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            ),
-                            lineWidth: 0.6
-                        )
-                )
 
             content
                 .padding(.horizontal, contentHorizontalPadding)
@@ -97,6 +82,8 @@ struct NotchView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipShape(NotchShape(bottomCornerRadius: bottomRadius))
+        .compositingGroup()
         .contentShape(NotchShape(bottomCornerRadius: bottomRadius))
         .onHover { hovering in
             scheduleHover(hovering)
@@ -134,6 +121,9 @@ struct NotchView: View {
         case .settings:
             settingsContent
                 .transition(.opacity.combined(with: .move(edge: .bottom)))
+        case .breakPrompt:
+            breakPromptContent
+                .transition(.opacity.combined(with: .scale(scale: 0.94)))
         }
     }
 
@@ -250,10 +240,57 @@ struct NotchView: View {
             }
             .padding(.horizontal, 4)
 
+            // 今日统计
+            HStack(spacing: 12) {
+                Label("\(timer.todayFocusMinutes) 分钟", systemImage: "flame.fill")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(.white.opacity(0.45))
+
+                Label("\(timer.todayCompletedSessions) 个番茄", systemImage: "checkmark.circle.fill")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(.white.opacity(0.45))
+            }
+
             Spacer(minLength: 0)
 
             // 控制区
             controlBar
+        }
+    }
+
+    // MARK: - Break Prompt
+
+    private var breakPromptContent: some View {
+        VStack(spacing: 12) {
+            Text(motivationalMessage)
+                .font(.system(size: 14, weight: .medium, design: .rounded))
+                .foregroundColor(.white)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+
+            Text("休息一下吧")
+                .font(.system(size: 11))
+                .foregroundColor(.white.opacity(0.5))
+
+            Button(action: {
+                viewModel.dismissBreakPrompt()
+                timer.startBreak()
+            }) {
+                HStack(spacing: 6) {
+                    Image(systemName: "cup.and.saucer.fill")
+                        .font(.system(size: 10))
+                    Text("开始休息")
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                }
+                .foregroundColor(.black)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 8)
+                .background(
+                    Capsule()
+                        .fill(accentColor)
+                )
+            }
+            .buttonStyle(.plain)
         }
     }
 
@@ -321,6 +358,45 @@ struct NotchView: View {
                     settingsSection(title: "行为") {
                         settingsToggle(title: "自动开始休息", isOn: $timer.config.autoStartBreak)
                         settingsToggle(title: "自动开始工作", isOn: $timer.config.autoStartWork)
+                    }
+
+                    // 显示器
+                    settingsSection(title: "显示器") {
+                        ForEach(viewModel.connectedDisplays, id: \.self) { displayName in
+                            settingsToggle(
+                                title: displayName,
+                                isOn: Binding<Bool>(
+                                    get: {
+                                        let selected = timer.config.selectedDisplayNames
+                                        if selected.isEmpty {
+                                            // 默认模式：判断是否为内建
+                                            return displayName.contains("Built-in") || displayName.contains("内建") || displayName.contains("内置")
+                                        }
+                                        return selected.contains(displayName)
+                                    },
+                                    set: { newValue in
+                                        var selected = timer.config.selectedDisplayNames
+                                        // 如果从默认模式（空数组）转入手动模式，先填入当前状态
+                                        if selected.isEmpty {
+                                            selected = viewModel.connectedDisplays.filter { name in
+                                                name.contains("Built-in") || name.contains("内建") || name.contains("内置")
+                                            }
+                                        }
+                                        if newValue {
+                                            if !selected.contains(displayName) {
+                                                selected.append(displayName)
+                                            }
+                                        } else {
+                                            // 防止全部取消选择
+                                            if selected.count > 1 {
+                                                selected.removeAll { $0 == displayName }
+                                            }
+                                        }
+                                        timer.config.selectedDisplayNames = selected
+                                    }
+                                )
+                            )
+                        }
                     }
 
                     // 关于
@@ -497,6 +573,7 @@ struct NotchView: View {
                     foreground: accentColor
                 ) {
                     timer.stop()
+                    timer.resetRounds()
                     viewModel.collapse()
                 }
             }
@@ -575,6 +652,7 @@ struct NotchView: View {
         case .idle, .compact: return 18
         case .expanded:       return 24
         case .settings:       return 24
+        case .breakPrompt:    return 24
         }
     }
 
@@ -583,23 +661,26 @@ struct NotchView: View {
         case .idle, .compact: return 12 // 内容已位于左右翼，主体水平内边距收窄
         case .expanded:       return 18
         case .settings:       return 18
+        case .breakPrompt:    return 18
         }
     }
 
     private var contentTopPadding: CGFloat {
         switch viewModel.displayState {
         case .idle, .compact: return 12
-        case .expanded:       return 36
+        case .expanded:       return 54
         case .settings:       return 14
+        case .breakPrompt:    return 54
         }
     }
 
     private var contentBottomPadding: CGFloat {
         switch viewModel.displayState {
-        case .idle:     return 12
-        case .compact:  return 12
-        case .expanded: return 16
-        case .settings: return 16
+        case .idle:        return 12
+        case .compact:     return 12
+        case .expanded:    return 16
+        case .settings:    return 16
+        case .breakPrompt: return 16
         }
     }
 
@@ -611,6 +692,20 @@ struct NotchView: View {
         case .longBreak:   return timer.isPaused ? "pause.fill" : "moon.stars.fill"
         case .paused:      return "pause.fill"
         }
+    }
+
+    /// 随机激励话语
+    private var motivationalMessage: String {
+        let messages = [
+            "太棒了！又完成了一个番茄钟 🎉",
+            "好好休息，让大脑放松一下 ☕",
+            "你的专注力真棒！该休息了 💪",
+            "做得很好！稍作休息效率更高 ✨",
+            "完美！休息是为了走更远的路 🌟",
+            "坚持就是胜利！先喝口水吧 💧",
+            "专注的你最有魅力！休息一下 🌈"
+        ]
+        return messages.randomElement() ?? messages[0]
     }
 
     /// 折叠状态下的简短状态标签
