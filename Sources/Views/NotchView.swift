@@ -66,8 +66,11 @@ struct NotchShape: Shape {
 struct NotchView: View {
     @ObservedObject var timer: PomodoroTimer
     @ObservedObject var viewModel: NotchViewModel
+    @ObservedObject var claudeManager: ClaudeSessionManager
 
     @State private var hoverDebounce: DispatchWorkItem?
+    @State private var isHookInstalled: Bool = false
+    @State private var isCodexHookInstalled: Bool = false
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -89,9 +92,10 @@ struct NotchView: View {
             scheduleHover(hovering)
         }
         .onTapGesture {
-            // 设置态下不再响应主体点击，避免误关闭设置面板
-            guard viewModel.displayState != .settings else { return }
-            // 点击切换 pinned 展开（兼容触控板/鼠标点击作为后备交互）
+            // 设置态/Claude审批态/Claude通知态下不响应主体点击
+            guard viewModel.displayState != .settings,
+                  viewModel.displayState != .claudeApproval,
+                  viewModel.displayState != .claudeNotification else { return }
             withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
                 viewModel.toggleExpansion()
             }
@@ -124,6 +128,12 @@ struct NotchView: View {
         case .breakPrompt:
             breakPromptContent
                 .transition(.opacity.combined(with: .scale(scale: 0.94)))
+        case .claudeApproval:
+            claudeApprovalContent
+                .transition(.opacity.combined(with: .scale(scale: 0.94)))
+        case .claudeNotification:
+            claudeNotificationContent
+                .transition(.opacity.combined(with: .scale(scale: 0.94)))
         }
     }
 
@@ -149,11 +159,13 @@ struct NotchView: View {
 
     // MARK: - Compact
 
+    @State private var claudeDotPulsing: Bool = false
+    @State private var claudeSpinAngle: Double = 0
+
     private var compactContent: some View {
         HStack(spacing: 0) {
-            // 左翼：进度环 + 简短状态文字（位于硬件刘海左侧）
+            // 左翼：进度环 + 阶段文字 + 倒计时
             HStack(spacing: 6) {
-                // 小型进度环代替实心状态点
                 ZStack {
                     Circle()
                         .stroke(Color.white.opacity(0.15), lineWidth: 1.5)
@@ -168,19 +180,105 @@ struct NotchView: View {
                     .font(.system(size: 10, weight: .medium, design: .rounded))
                     .foregroundColor(.white.opacity(0.7))
                     .lineLimit(1)
+
+                Text(timer.formattedTime)
+                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    .monospacedDigit()
+                    .foregroundColor(.white)
+                    .kerning(0.5)
+                    .lineLimit(1)
             }
-            .frame(width: 70, alignment: .leading)
 
-            // 中央间隙：硬件刘海所在位置，纯黑无缝融合
+            // 中央占位空间：物理刘海宽度，不可用于任何内容
             Spacer()
+                .frame(width: CGFloat(timer.config.notchGapWidth))
 
-            // 右翼：仅剩余时间（移除不可见的进度条）
-            Text(timer.formattedTime)
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
-                .monospacedDigit()
-                .foregroundColor(.white)
-                .kerning(0.5)
-                .frame(width: 80, alignment: .trailing)
+            // 右翼：AI状态（独占右侧空间）
+            HStack(spacing: 6) {
+                compactAIIndicator
+            }
+            .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+    }
+
+    @ViewBuilder
+    private var compactAIIndicator: some View {
+        let sourceLabel = viewModel.activeSource == "codex" ? "Codex" : "AI"
+        switch claudeManager.currentPhase {
+        case .processing:
+            HStack(spacing: 2) {
+                Circle()
+                    .fill(claudeAmberColor)
+                    .frame(width: 6, height: 6)
+                    .opacity(claudeDotPulsing ? 1.0 : 0.3)
+                    .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: claudeDotPulsing)
+                    .onAppear { claudeDotPulsing = true }
+                    .onDisappear { claudeDotPulsing = false }
+                Text(sourceLabel)
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(claudeAmberColor)
+                if let tool = viewModel.activeToolName {
+                    Text("· \(truncatedToolName(tool, maxLength: 8))")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundColor(claudeAmberColor)
+                        .lineLimit(1)
+                        .fixedSize()
+                }
+            }
+        case .waitingForInput:
+            HStack(spacing: 2) {
+                Circle()
+                    .fill(claudeGreenColor)
+                    .frame(width: 6, height: 6)
+                Text(sourceLabel)
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(claudeGreenColor)
+                Text("✓")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(claudeGreenColor)
+            }
+        case .waitingForApproval:
+            HStack(spacing: 2) {
+                Circle()
+                    .fill(claudeRedColor)
+                    .frame(width: 6, height: 6)
+                    .opacity(claudeDotPulsing ? 1.0 : 0.3)
+                    .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: claudeDotPulsing)
+                    .onAppear { claudeDotPulsing = true }
+                    .onDisappear { claudeDotPulsing = false }
+                Text(sourceLabel)
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(claudeRedColor)
+                Text("!")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(claudeRedColor)
+            }
+        case .waitingForResponse:
+            HStack(spacing: 2) {
+                Circle()
+                    .fill(claudeAmberColor)
+                    .frame(width: 6, height: 6)
+                    .opacity(claudeDotPulsing ? 1.0 : 0.3)
+                    .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: claudeDotPulsing)
+                    .onAppear { claudeDotPulsing = true }
+                    .onDisappear { claudeDotPulsing = false }
+                Text(sourceLabel)
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(claudeAmberColor)
+                Text("?")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(claudeAmberColor)
+            }
+        case .compacting:
+            Image(systemName: "arrow.triangle.2.circlepath")
+                .font(.system(size: 9))
+                .foregroundColor(claudeAmberColor)
+                .rotationEffect(.degrees(claudeSpinAngle))
+                .animation(.linear(duration: 1.5).repeatForever(autoreverses: false), value: claudeSpinAngle)
+                .onAppear { claudeSpinAngle = 360 }
+                .onDisappear { claudeSpinAngle = 0 }
+        default:
+            EmptyView()
         }
     }
 
@@ -249,6 +347,31 @@ struct NotchView: View {
                 Label("\(timer.todayCompletedSessions) 个番茄", systemImage: "checkmark.circle.fill")
                     .font(.system(size: 10, weight: .medium))
                     .foregroundColor(.white.opacity(0.45))
+            }
+
+            // AI 状态行
+            if claudeManager.currentPhase.isActive {
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(claudeAmberColor)
+                        .frame(width: 5, height: 5)
+                    Text(viewModel.activeSource == "codex" ? "Codex" : "Claude")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.white.opacity(0.7))
+                        .lineLimit(1)
+                    if let tool = viewModel.activeToolName {
+                        Text("· \(truncatedToolName(tool, maxLength: 14))")
+                            .font(.system(size: 10))
+                            .foregroundColor(.white.opacity(0.5))
+                            .lineLimit(1)
+                            .fixedSize()
+                    }
+                    if viewModel.toolCount > 0 {
+                        Text("(\(viewModel.toolCount))")
+                            .font(.system(size: 10))
+                            .foregroundColor(.white.opacity(0.5))
+                    }
+                }
             }
 
             Spacer(minLength: 0)
@@ -330,6 +453,20 @@ struct NotchView: View {
             // 可滚动设置内容
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 14) {
+                    // Hook 冲突警告
+                    if HookInstaller.isVibeNotchInstalled() {
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.orange)
+                                .font(.system(size: 12))
+                            Text("检测到 vibe-notch，可能存在 hook 冲突")
+                                .font(.system(size: 11))
+                                .foregroundColor(.orange.opacity(0.8))
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                    }
+
                     // 时间
                     settingsSection(title: "时间") {
                         settingsRow(title: "工作", value: timer.config.workDuration / 60, unit: "分钟") {
@@ -369,14 +506,12 @@ struct NotchView: View {
                                     get: {
                                         let selected = timer.config.selectedDisplayNames
                                         if selected.isEmpty {
-                                            // 默认模式：判断是否为内建
                                             return displayName.contains("Built-in") || displayName.contains("内建") || displayName.contains("内置")
                                         }
                                         return selected.contains(displayName)
                                     },
                                     set: { newValue in
                                         var selected = timer.config.selectedDisplayNames
-                                        // 如果从默认模式（空数组）转入手动模式，先填入当前状态
                                         if selected.isEmpty {
                                             selected = viewModel.connectedDisplays.filter { name in
                                                 name.contains("Built-in") || name.contains("内建") || name.contains("内置")
@@ -387,7 +522,6 @@ struct NotchView: View {
                                                 selected.append(displayName)
                                             }
                                         } else {
-                                            // 防止全部取消选择
                                             if selected.count > 1 {
                                                 selected.removeAll { $0 == displayName }
                                             }
@@ -397,6 +531,123 @@ struct NotchView: View {
                                 )
                             )
                         }
+                        settingsRow(title: "刘海宽度", value: timer.config.notchGapWidth, unit: "pt") {
+                            timer.config.notchGapWidth = max(200, timer.config.notchGapWidth - 10)
+                        } increment: {
+                            timer.config.notchGapWidth = min(300, timer.config.notchGapWidth + 10)
+                        }
+                    }
+
+                    // AI Hooks
+                    settingsSection(title: "AI Hooks") {
+                        // Claude Code hook status row
+                        HStack(spacing: 8) {
+                            Image(systemName: isHookInstalled ? "checkmark.circle.fill" : "xmark.circle.fill")
+                                .font(.system(size: 14))
+                                .foregroundColor(isHookInstalled ? Color(red: 0.4, green: 0.86, blue: 0.62) : Color(red: 0.85, green: 0.3, blue: 0.3))
+                            Text(isHookInstalled ? "Hook 已安装" : "Hook 未安装")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(.white.opacity(0.8))
+                            Spacer()
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+
+                        // Hook path row
+                        HStack {
+                            Text("~/.claude/hooks/notch-pomodoro-hook.py")
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(.white.opacity(0.4))
+                            Spacer()
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 4)
+
+                        // Action button row
+                        HStack {
+                            Spacer()
+                            Button(action: {
+                                HookInstaller.installIfNeeded()
+                                isHookInstalled = HookInstaller.isInstalled()
+                            }) {
+                                Text(isHookInstalled ? "重新安装" : "安装 Hook")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 6)
+                                    .background(
+                                        Capsule()
+                                            .fill(Color.white.opacity(0.12))
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                            Spacer()
+                        }
+                        .padding(.vertical, 6)
+
+                        // Codex CLI subsection
+                        Divider()
+                            .background(Color.white.opacity(0.1))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 4)
+
+                        // Codex status row
+                        HStack(spacing: 8) {
+                            Image(systemName: isCodexHookInstalled ? "checkmark.circle.fill" : "xmark.circle.fill")
+                                .font(.system(size: 14))
+                                .foregroundColor(isCodexHookInstalled ? Color(red: 0.4, green: 0.86, blue: 0.62) : Color(red: 0.85, green: 0.3, blue: 0.3))
+                            Text(isCodexHookInstalled ? "Codex Hook 已安装" : "Codex Hook 未安装")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(.white.opacity(0.8))
+                            Spacer()
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+
+                        // Codex path row
+                        HStack {
+                            Text("~/.codex/hooks.json")
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(.white.opacity(0.4))
+                            Spacer()
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 4)
+
+                        // Codex action button
+                        HStack {
+                            Spacer()
+                            Button(action: {
+                                HookInstaller.installCodexIfNeeded()
+                                isCodexHookInstalled = HookInstaller.isCodexInstalled()
+                            }) {
+                                Text(isCodexHookInstalled ? "重新安装" : "安装 Hook")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 6)
+                                    .background(Capsule().fill(Color.white.opacity(0.12)))
+                            }
+                            .buttonStyle(.plain)
+                            Spacer()
+                        }
+                        .padding(.vertical, 6)
+
+                        // Trust instruction
+                        HStack(spacing: 4) {
+                            Image(systemName: "info.circle")
+                                .font(.system(size: 10))
+                                .foregroundColor(.white.opacity(0.4))
+                            Text("首次使用需在 Codex CLI 中运行 /hooks 信任钩子")
+                                .font(.system(size: 10))
+                                .foregroundColor(.white.opacity(0.4))
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 4)
+                    }
+                    .onAppear {
+                        isHookInstalled = HookInstaller.isInstalled()
+                        isCodexHookInstalled = HookInstaller.isCodexInstalled()
                     }
 
                     // 关于
@@ -511,6 +762,164 @@ struct NotchView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
+    }
+
+    // MARK: - Claude Approval
+
+    private var claudeApprovalContent: some View {
+        VStack(spacing: 12) {
+            // Header
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 16))
+                    .foregroundColor(claudeAmberColor)
+                Text(viewModel.activeSource == "codex" ? "Codex CLI 请求权限" : "Claude Code 请求权限")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(claudeAmberColor)
+            }
+
+            // Tool name and input preview
+            if case .waitingForApproval(let context) = claudeManager.currentPhase {
+                Text("Tool: \(context.toolName)")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(.white)
+
+                if let input = context.formattedInput {
+                    Text(input)
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundColor(.white.opacity(0.8))
+                        .lineLimit(2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(Color.white.opacity(0.08))
+                        )
+                }
+            }
+
+            Spacer(minLength: 0)
+
+            // Action buttons
+            HStack(spacing: 20) {
+                Button(action: { claudeManager.approvePermission() }) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 12, weight: .bold))
+                        Text("允许")
+                            .font(.system(size: 14, weight: .semibold))
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 10)
+                    .background(
+                        Capsule()
+                            .fill(Color(red: 0.3, green: 0.75, blue: 0.45))
+                    )
+                }
+                .buttonStyle(.plain)
+
+                Button(action: { claudeManager.denyPermission() }) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 12, weight: .bold))
+                        Text("拒绝")
+                            .font(.system(size: 14, weight: .semibold))
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 10)
+                    .background(
+                        Capsule()
+                            .fill(Color(red: 0.85, green: 0.3, blue: 0.3))
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.bottom, 8)
+        }
+        .transition(.opacity)
+    }
+
+    // MARK: - Claude Notification
+
+    private var claudeNotificationContent: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            claudeNotificationHeader
+            claudeNotificationBody
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            claudeManager.dismissNotification()
+        }
+    }
+
+    @ViewBuilder
+    private var claudeNotificationHeader: some View {
+        let sourceLabel = viewModel.activeSource == "codex" ? "Codex" : "Claude"
+        switch claudeManager.currentPhase {
+        case .error:
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(claudeRedColor)
+                    .frame(width: 8, height: 8)
+                Text("\(sourceLabel) 出错")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(claudeRedColor)
+            }
+        case .waitingForResponse:
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(claudeAmberColor)
+                    .frame(width: 8, height: 8)
+                Text("\(sourceLabel) 需要你的回复")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(claudeAmberColor)
+            }
+        default:
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(claudeGreenColor)
+                    .frame(width: 8, height: 8)
+                Text("\(sourceLabel) 任务完成")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(claudeGreenColor)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var claudeNotificationBody: some View {
+        switch claudeManager.currentPhase {
+        case .error(let msg):
+            Text(msg)
+                .font(.system(size: 13))
+                .foregroundColor(.white.opacity(0.6))
+                .lineLimit(2)
+        case .waitingForResponse(let message):
+            VStack(alignment: .leading, spacing: 4) {
+                if let message = message, !message.isEmpty {
+                    Text(message)
+                        .font(.system(size: 13))
+                        .foregroundColor(.white.opacity(0.6))
+                        .lineLimit(2)
+                }
+                Text("请切换到终端回复")
+                    .font(.system(size: 12))
+                    .foregroundColor(.white.opacity(0.6))
+            }
+        default:
+            VStack(alignment: .leading, spacing: 4) {
+                Text("项目: \(claudeManager.projectName ?? "Unknown")")
+                    .font(.system(size: 13))
+                    .foregroundColor(.white.opacity(0.6))
+                Text("等待输入")
+                    .font(.system(size: 12))
+                    .foregroundColor(.white.opacity(0.6))
+            }
+        }
     }
 
     // MARK: - Sub-components
@@ -653,6 +1062,8 @@ struct NotchView: View {
         case .expanded:       return 24
         case .settings:       return 24
         case .breakPrompt:    return 24
+        case .claudeApproval: return 24
+        case .claudeNotification: return 22
         }
     }
 
@@ -662,6 +1073,8 @@ struct NotchView: View {
         case .expanded:       return 18
         case .settings:       return 18
         case .breakPrompt:    return 18
+        case .claudeApproval: return 18
+        case .claudeNotification: return 16
         }
     }
 
@@ -671,6 +1084,8 @@ struct NotchView: View {
         case .expanded:       return 54
         case .settings:       return 14
         case .breakPrompt:    return 54
+        case .claudeApproval: return 54
+        case .claudeNotification: return 44
         }
     }
 
@@ -681,6 +1096,8 @@ struct NotchView: View {
         case .expanded:    return 16
         case .settings:    return 16
         case .breakPrompt: return 16
+        case .claudeApproval: return 16
+        case .claudeNotification: return 14
         }
     }
 
@@ -724,6 +1141,14 @@ struct NotchView: View {
         }
     }
 
+    /// 截断工具名称：超过最大长度时添加省略号
+    private func truncatedToolName(_ name: String, maxLength: Int = 8) -> String {
+        if name.count > maxLength {
+            return String(name.prefix(maxLength - 1)) + "…"
+        }
+        return name
+    }
+
     /// 状态主色：工作=暖橙，短休=薄荷，长休=冷蓝；闲置=中性灰白
     private var accentColor: Color {
         switch timer.status {
@@ -739,6 +1164,20 @@ struct NotchView: View {
             return Color(red: 0.92, green: 0.92, blue: 0.94)
         }
     }
+
+    // MARK: - Claude Colors
+
+    private var claudeAmberColor: Color {
+        Color(red: 0.95, green: 0.7, blue: 0.2)
+    }
+
+    private var claudeGreenColor: Color {
+        Color(red: 0.4, green: 0.86, blue: 0.62)
+    }
+
+    private var claudeRedColor: Color {
+        Color(red: 0.85, green: 0.3, blue: 0.3)
+    }
 }
 
 // MARK: - Preview
@@ -746,22 +1185,23 @@ struct NotchView: View {
 struct NotchView_Previews: PreviewProvider {
     static var previews: some View {
         let timer = PomodoroTimer()
-        let vm = NotchViewModel(timer: timer)
+        let claude = ClaudeSessionManager()
+        let vm = NotchViewModel(timer: timer, claudeManager: claude)
 
         return Group {
-            NotchView(timer: timer, viewModel: vm)
+            NotchView(timer: timer, viewModel: vm, claudeManager: claude)
                 .frame(width: 350, height: 38)
                 .previewDisplayName("Idle")
 
-            NotchView(timer: timer, viewModel: vm)
+            NotchView(timer: timer, viewModel: vm, claudeManager: claude)
                 .frame(width: 350, height: 36)
                 .previewDisplayName("Compact")
 
-            NotchView(timer: timer, viewModel: vm)
-                .frame(width: 360, height: 200)
+            NotchView(timer: timer, viewModel: vm, claudeManager: claude)
+                .frame(width: 360, height: 280)
                 .previewDisplayName("Expanded")
 
-            NotchView(timer: timer, viewModel: vm)
+            NotchView(timer: timer, viewModel: vm, claudeManager: claude)
                 .frame(width: 380, height: 420)
                 .previewDisplayName("Settings")
         }

@@ -4,29 +4,33 @@ import Combine
 
 // MARK: - Display State
 
-/// 灵动岛显示阶段：闲置 / 紧凑 / 展开 / 设置
+/// 灵动岛显示阶段：闲置 / 紧凑 / 展开 / 设置 / Claude审批 / Claude通知
 enum NotchDisplayState: Equatable {
     case idle      // 计时器空闲，最小指示器
     case compact   // 计时进行中，紧凑信息
     case expanded  // 悬停或点击展开，完整控制面板
     case settings  // 设置面板
     case breakPrompt  // 休息提示弹窗（半高）
+    case claudeApproval    // Claude Code 权限请求 UI
+    case claudeNotification // Claude Code 任务完成/错误通知
 
     /// 对应窗口尺寸（与硬件刘海上沿对齐，向下生长）
     var windowSize: NSSize {
         switch self {
         case .idle:
-            // 与紧凑状态同宽，使用翼布局展示「准备开始」状态
-            return NSSize(width: 350, height: 38)
+            return NSSize(width: 400, height: 38)
         case .compact:
-            // 必须显著宽于硬件刘海（≈180pt），让左右翼内容露出
-            return NSSize(width: 350, height: 38)
+            return NSSize(width: 400, height: 38)
         case .expanded:
-            return NSSize(width: 360, height: 240)
+            return NSSize(width: 360, height: 280)
         case .settings:
             return NSSize(width: 380, height: 420)
         case .breakPrompt:
             return NSSize(width: 360, height: 180)
+        case .claudeApproval:
+            return NSSize(width: 400, height: 260)
+        case .claudeNotification:
+            return NSSize(width: 360, height: 140)
         }
     }
 }
@@ -51,11 +55,22 @@ final class NotchViewModel: ObservableObject {
     @Published private(set) var displayState: NotchDisplayState = .idle
     /// 是否显示休息提示（工作完成后自动触发，5秒后消失）
     @Published var showBreakPrompt: Bool = false
+    /// Claude 会话阶段
+    @Published var claudePhase: ClaudeSessionPhase = .idle
+    /// 当前活跃 AI 源 ("claude" 或 "codex")
+    @Published var activeSource: String = "claude"
+    /// 当前活跃源的累计工具调用次数
+    @Published var toolCount: Int = 0
+    /// 当前活跃源最近使用的工具名
+    @Published var activeToolName: String? = nil
     private var breakPromptDismissWork: DispatchWorkItem?
 
+    let claudeManager: ClaudeSessionManager
     private var cancellables = Set<AnyCancellable>()
 
-    init(timer: PomodoroTimer) {
+    init(timer: PomodoroTimer, claudeManager: ClaudeSessionManager) {
+        self.claudeManager = claudeManager
+
         // 监听 timer 状态以更新 isTimerActive
         timer.$status
             .map { $0 != .idle }
@@ -72,16 +87,42 @@ final class NotchViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
-        // 多态合并：设置 > 休息提示 > 展开 > 紧凑 > 闲置；冷启动期间屏蔽 hover
-        Publishers.CombineLatest3(
+        // 订阅 Claude 会话阶段变化
+        claudeManager.$currentPhase
+            .receive(on: RunLoop.main)
+            .assign(to: &$claudePhase)
+
+        // 订阅活跃 AI 源变化
+        claudeManager.$activeSource
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] source in self?.activeSource = source }
+            .store(in: &cancellables)
+
+        // 订阅工具调用次数变化
+        claudeManager.$toolCount
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] count in self?.toolCount = count }
+            .store(in: &cancellables)
+
+        // 订阅最近工具名变化
+        claudeManager.$lastToolName
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] name in self?.activeToolName = name }
+            .store(in: &cancellables)
+
+        // 多态合并：设置 > Claude审批 > 休息提示 > Claude通知 > 展开 > 紧凑 > 闲置
+        Publishers.CombineLatest4(
             Publishers.CombineLatest4($isPinnedExpanded, $isHovering, $isTimerActive, $showSettings),
             $isReady,
-            $showBreakPrompt
+            $showBreakPrompt,
+            $claudePhase
         )
-            .map { quad, ready, breakPrompt -> NotchDisplayState in
+            .map { quad, ready, breakPrompt, claude -> NotchDisplayState in
                 let (pinned, hovering, active, settings) = quad
                 if settings { return .settings }
+                if claude.isWaitingForApproval { return .claudeApproval }
                 if breakPrompt { return .breakPrompt }
+                if claude.isNotification { return .claudeNotification }
                 if pinned || (hovering && ready) { return .expanded }
                 if active { return .compact }
                 return .idle
@@ -142,13 +183,15 @@ final class NotchViewModel: ObservableObject {
 /// 刘海区域窗口控制器：负责窗口构造、置顶定位与跟随 ViewModel 动态调整尺寸
 final class NotchWindowController: NSWindowController {
     private let timer: PomodoroTimer
+    private let claudeManager: ClaudeSessionManager
     let viewModel: NotchViewModel
     private var assignedScreen: NSScreen  // 分配的显示器（非 let，因为重连时对象可能变化）
     private var cancellables = Set<AnyCancellable>()
 
-    init(timer: PomodoroTimer, screen: NSScreen) {
+    init(timer: PomodoroTimer, claudeManager: ClaudeSessionManager, screen: NSScreen) {
         self.timer = timer
-        self.viewModel = NotchViewModel(timer: timer)
+        self.claudeManager = claudeManager
+        self.viewModel = NotchViewModel(timer: timer, claudeManager: claudeManager)
         self.assignedScreen = screen
 
         let initialSize = viewModel.displayState.windowSize
@@ -198,7 +241,7 @@ final class NotchWindowController: NSWindowController {
     private func setupHostingController() {
         guard let window = window else { return }
 
-        let root = NotchRootView(timer: timer, viewModel: viewModel)
+        let root = NotchRootView(timer: timer, viewModel: viewModel, claudeManager: claudeManager)
         let hosting = NSHostingController(rootView: root)
         // 让 hosting view 自适应容器，由窗口尺寸驱动 SwiftUI 布局
         if #available(macOS 13.0, *) {
@@ -284,6 +327,12 @@ final class NotchWindow: NSPanel {
     /// 关键修复：允许成为 key window，否则面板内的 SwiftUI 按钮无法接收点击
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+
+    /// 点击时主动成为 key window，确保 nonactivatingPanel 下按钮可响应
+    override func mouseDown(with event: NSEvent) {
+        makeKey()
+        super.mouseDown(with: event)
+    }
 }
 
 // MARK: - SwiftUI Root
@@ -292,9 +341,10 @@ final class NotchWindow: NSPanel {
 struct NotchRootView: View {
     @ObservedObject var timer: PomodoroTimer
     @ObservedObject var viewModel: NotchViewModel
+    @ObservedObject var claudeManager: ClaudeSessionManager
 
     var body: some View {
-        NotchView(timer: timer, viewModel: viewModel)
+        NotchView(timer: timer, viewModel: viewModel, claudeManager: claudeManager)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .ignoresSafeArea()
     }

@@ -15,16 +15,29 @@ struct NotchPomodoroApp: App {
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var timer: PomodoroTimer!
     private var displayManager: NotchDisplayManager!
+    private var claudeManager: ClaudeSessionManager?
     
     func applicationDidFinishLaunching(_ notification: Notification) {
         // 请求通知权限
         requestNotificationPermission()
         
+        // 安装 Claude Code hook（如果需要）
+        HookInstaller.installIfNeeded()
+        
+        // 安装 Codex CLI hook（如果需要）
+        HookInstaller.installCodexIfNeeded()
+        
+        // 启动 hook socket 服务器
+        HookSocketServer.shared.start()
+        
+        // 初始化 Claude 会话管理器
+        claudeManager = ClaudeSessionManager()
+        
         // 初始化番茄钟
         timer = PomodoroTimer()
         
         // 初始化多显示器刘海窗口管理器
-        displayManager = NotchDisplayManager(timer: timer)
+        displayManager = NotchDisplayManager(timer: timer, claudeManager: claudeManager!)
     }
     
     private func requestNotificationPermission() {
@@ -49,6 +62,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     func applicationWillTerminate(_ notification: Notification) {
+        // 停止 hook socket 服务器
+        HookSocketServer.shared.stop()
         // 保存状态
         timer.stop()
     }

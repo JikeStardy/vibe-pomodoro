@@ -4,11 +4,13 @@ import Combine
 /// 多显示器 Notch 窗口管理器：为每个选中的显示器创建独立的 NotchWindowController
 final class NotchDisplayManager {
     private let timer: PomodoroTimer
+    private let claudeManager: ClaudeSessionManager
     private var controllers: [String: NotchWindowController] = [:] // key = screen.localizedName
     private var cancellables = Set<AnyCancellable>()
 
-    init(timer: PomodoroTimer) {
+    init(timer: PomodoroTimer, claudeManager: ClaudeSessionManager) {
         self.timer = timer
+        self.claudeManager = claudeManager
 
         // 监听屏幕连接/断开
         NotificationCenter.default.addObserver(
@@ -60,7 +62,7 @@ final class NotchDisplayManager {
                 // 屏幕对象可能在重连后变化，更新引用
                 existing.updateScreen(screen)
             } else {
-                let controller = NotchWindowController(timer: timer, screen: screen)
+                let controller = NotchWindowController(timer: timer, claudeManager: claudeManager, screen: screen)
                 controller.show()
                 controllers[name] = controller
             }

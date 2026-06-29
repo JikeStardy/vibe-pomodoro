@@ -10,7 +10,8 @@ let package = Package(
         .executableTarget(
             name: "NotchPomodoro",
             path: "Sources",
-            exclude: ["App/Info.plist", "App/NotchPomodoro.entitlements", "Resources"]
+            exclude: ["App/Info.plist", "App/NotchPomodoro.entitlements"],
+            resources: [.process("Resources")]
         )
     ]
 )
