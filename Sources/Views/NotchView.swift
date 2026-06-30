@@ -172,6 +172,11 @@ struct NotchView: View {
                 Text("!")
                     .font(.system(size: 9, weight: .bold))
                     .foregroundColor(claudeRedColor)
+                if viewModel.pendingApprovalCount > 0 {
+                    Text("(\(viewModel.pendingApprovalCount))")
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundColor(claudeRedColor.opacity(0.8))
+                }
             }
         case .waitingForResponse:
             HStack(spacing: 2) {

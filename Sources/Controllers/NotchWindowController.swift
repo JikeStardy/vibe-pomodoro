@@ -63,6 +63,8 @@ final class NotchViewModel: ObservableObject {
     @Published var toolCount: Int = 0
     /// 当前活跃源最近使用的工具名
     @Published var activeToolName: String? = nil
+    /// 当前审批请求后排队等待的审批数
+    @Published var pendingApprovalCount: Int = 0
     private var breakPromptDismissWork: DispatchWorkItem?
 
     let claudeManager: ClaudeSessionManager
@@ -108,6 +110,12 @@ final class NotchViewModel: ObservableObject {
         claudeManager.$lastToolName
             .receive(on: DispatchQueue.main)
             .sink { [weak self] name in self?.activeToolName = name }
+            .store(in: &cancellables)
+
+        // 订阅待处理审批数量变化
+        claudeManager.$pendingApprovalCount
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] count in self?.pendingApprovalCount = count }
             .store(in: &cancellables)
 
         // 多态合并：设置 > Claude审批 > 休息提示 > Claude通知 > 展开 > 紧凑 > 闲置

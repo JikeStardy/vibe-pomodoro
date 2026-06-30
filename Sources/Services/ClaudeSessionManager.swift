@@ -18,6 +18,8 @@ class ClaudeSessionManager: ObservableObject {
     @Published var isSubagentActive: Bool = false
     @Published var activeSource: String = "claude"
     @Published var toolCount: Int = 0
+    @Published var pendingApprovalCount: Int = 0
+    let eventQueue = EventQueueManager()
 
     // MARK: - Private State (per-source tracking)
 
@@ -37,6 +39,10 @@ class ClaudeSessionManager: ObservableObject {
                 self?.processEvent(event)
             }
             .store(in: &cancellables)
+
+        eventQueue.$pendingCount
+            .receive(on: DispatchQueue.main)
+            .assign(to: &$pendingApprovalCount)
     }
 
     // MARK: - Event Processing
@@ -44,11 +50,19 @@ class ClaudeSessionManager: ObservableObject {
     private func processEvent(_ event: HookEvent) {
         let source = event.source
 
-        // If the active source is showing an approval prompt and this event is
-        // from the *other* source, don't clobber the approval UI — just update
-        // the other source's internal state silently.
-        if source != activeSource && currentPhase.isWaitingForApproval {
-            updateInternalState(for: source, event: event)
+        // If this is an approval request and we're already showing one, enqueue it
+        if event.status == "waiting_for_approval" && currentPhase.isWaitingForApproval {
+            // Build the context for queuing
+            let context = PermissionContext(
+                toolUseId: event.toolUseId ?? "",
+                toolName: event.tool ?? "unknown",
+                toolInput: event.toolInput,
+                receivedAt: Date()
+            )
+            let projName = URL(fileURLWithPath: event.cwd).lastPathComponent
+            eventQueue.enqueue(source: source, context: context, projectName: projName)
+            // Still update the internal state (tool count etc) but don't change phase
+            updateInternalStateWithoutPhase(for: source, event: event)
             return
         }
 
@@ -156,16 +170,21 @@ class ClaudeSessionManager: ObservableObject {
         guard case .waitingForApproval(let context) = currentPhase else { return }
         server.respondToPermission(toolUseId: context.toolUseId, decision: "allow", reason: nil)
 
-        // Reset current source's phase to processing
-        updateState(activeSource) { state in
-            state.phase = .processing
-        }
-
-        // If the other source also has a pending approval, switch to it
-        let otherSource = activeSource == "codex" ? "claude" : "codex"
-        let otherState = otherSource == "codex" ? codexState : claudeState
-        if otherState.phase.isWaitingForApproval {
-            activeSource = otherSource
+        // Try to pop next from queue
+        if let next = eventQueue.popNext() {
+            // Switch to next queued approval
+            activeSource = next.source
+            updateState(next.source) { state in
+                state.phase = .waitingForApproval(next.context)
+                if let proj = next.projectName {
+                    state.projectName = proj
+                }
+            }
+        } else {
+            // No more pending — return to processing
+            updateState(activeSource) { state in
+                state.phase = .processing
+            }
         }
 
         syncPublishedProperties()
@@ -176,17 +195,21 @@ class ClaudeSessionManager: ObservableObject {
         guard case .waitingForApproval(let context) = currentPhase else { return }
         server.respondToPermission(toolUseId: context.toolUseId, decision: "deny", reason: reason)
 
-        // Reset current source's phase to processing (denied tool usually means
-        // the agent will try a different approach and keep working)
-        updateState(activeSource) { state in
-            state.phase = .processing
-        }
-
-        // If the other source also has a pending approval, switch to it
-        let otherSource = activeSource == "codex" ? "claude" : "codex"
-        let otherState = otherSource == "codex" ? codexState : claudeState
-        if otherState.phase.isWaitingForApproval {
-            activeSource = otherSource
+        // Try to pop next from queue
+        if let next = eventQueue.popNext() {
+            // Switch to next queued approval
+            activeSource = next.source
+            updateState(next.source) { state in
+                state.phase = .waitingForApproval(next.context)
+                if let proj = next.projectName {
+                    state.projectName = proj
+                }
+            }
+        } else {
+            // No more pending — return to processing
+            updateState(activeSource) { state in
+                state.phase = .processing
+            }
         }
 
         syncPublishedProperties()
@@ -202,6 +225,22 @@ class ClaudeSessionManager: ObservableObject {
     }
 
     // MARK: - Private Helpers
+
+    /// Updates metadata for a source without changing the phase (used when enqueuing).
+    private func updateInternalStateWithoutPhase(for source: String, event: HookEvent) {
+        updateState(source) { state in
+            state.sessionId = event.sessionId
+            state.projectName = URL(fileURLWithPath: event.cwd).lastPathComponent
+            if let tool = event.tool {
+                state.lastToolName = tool
+            }
+            if event.event == "SubagentStart" {
+                state.isSubagentActive = true
+            } else if event.event == "SubagentStop" {
+                state.isSubagentActive = false
+            }
+        }
+    }
 
     /// Schedules an auto-dismiss for the given source.
     private func scheduleAutoDismiss(for source: String, after seconds: TimeInterval) {
