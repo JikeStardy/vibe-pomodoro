@@ -19,6 +19,8 @@ struct PomodoroConfig: Codable {
     var autoStartWork: Bool = false       // 自动开始工作
     var selectedDisplayNames: [String] = [] // 选中的显示器名称（空 = 仅内建屏幕）
     var notchGapWidth: Int = 240             // 刘海占位区域宽度（pt）
+    var compactWidth: Int = 400    // 收起状态窗口宽度（pt）
+    var expandedWidth: Int = 360   // 展开状态窗口宽度（pt）
     
     static let `default` = PomodoroConfig()
 }

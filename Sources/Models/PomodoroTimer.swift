@@ -387,7 +387,9 @@ class PomodoroTimer: ObservableObject {
                 autoStartBreak: dict["autoStartBreak"] as? Bool ?? false,
                 autoStartWork: dict["autoStartWork"] as? Bool ?? false,
                 selectedDisplayNames: dict["selectedDisplayNames"] as? [String] ?? [],
-                notchGapWidth: dict["notchGapWidth"] as? Int ?? 240
+                notchGapWidth: dict["notchGapWidth"] as? Int ?? 240,
+                compactWidth: dict["compactWidth"] as? Int ?? 400,
+                expandedWidth: dict["expandedWidth"] as? Int ?? 360
             )
         }
         return PomodoroConfig.default

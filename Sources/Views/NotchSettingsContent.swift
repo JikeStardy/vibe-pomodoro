@@ -122,6 +122,18 @@ extension NotchView {
                         } increment: {
                             timer.config.notchGapWidth = min(300, timer.config.notchGapWidth + 10)
                         }
+
+                        settingsRow(title: "收起宽度", value: timer.config.compactWidth, unit: "pt") {
+                            timer.config.compactWidth = max(350, timer.config.compactWidth - 10)
+                        } increment: {
+                            timer.config.compactWidth = min(500, timer.config.compactWidth + 10)
+                        }
+
+                        settingsRow(title: "展开宽度", value: timer.config.expandedWidth, unit: "pt") {
+                            timer.config.expandedWidth = max(300, timer.config.expandedWidth - 10)
+                        } increment: {
+                            timer.config.expandedWidth = min(480, timer.config.expandedWidth + 10)
+                        }
                     }
 
                     // AI Hooks

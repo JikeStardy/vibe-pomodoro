@@ -194,7 +194,7 @@ final class NotchWindowController: NSWindowController {
         self.viewModel = NotchViewModel(timer: timer, claudeManager: claudeManager)
         self.assignedScreen = screen
 
-        let initialSize = viewModel.displayState.windowSize
+        let initialSize = viewModel.displayState.windowSize // enum fallback for pre-super.init
         let window = NotchWindow(
             contentRect: NSRect(origin: .zero, size: initialSize),
             styleMask: [.borderless, .nonactivatingPanel],
@@ -262,6 +262,15 @@ final class NotchWindowController: NSWindowController {
                 self?.repositionWindow(animated: true)
             }
             .store(in: &cancellables)
+
+        // Reposition when config changes (user adjusts width in settings)
+        timer.$config
+            .removeDuplicates(by: { $0.compactWidth == $1.compactWidth && $0.expandedWidth == $1.expandedWidth })
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.repositionWindow(animated: true)
+            }
+            .store(in: &cancellables)
     }
 
     // MARK: - Geometry
@@ -273,12 +282,31 @@ final class NotchWindowController: NSWindowController {
         }
     }
 
+    /// 根据配置计算窗口尺寸
+    private func windowSize(for state: NotchDisplayState) -> NSSize {
+        let config = timer.config
+        switch state {
+        case .idle, .compact:
+            return NSSize(width: CGFloat(config.compactWidth), height: 38)
+        case .expanded:
+            return NSSize(width: CGFloat(config.expandedWidth), height: 280)
+        case .settings:
+            return NSSize(width: CGFloat(config.expandedWidth) + 20, height: 420)
+        case .breakPrompt:
+            return NSSize(width: CGFloat(config.expandedWidth), height: 180)
+        case .claudeApproval:
+            return NSSize(width: CGFloat(config.compactWidth), height: 260)
+        case .claudeNotification:
+            return NSSize(width: CGFloat(config.expandedWidth), height: 140)
+        }
+    }
+
     /// 计算并应用窗口 frame：顶边贴合屏幕顶端，向下生长
     private func repositionWindow(animated: Bool) {
         guard let window = window else { return }
         let screen = assignedScreen
 
-        let size = viewModel.displayState.windowSize
+        let size = windowSize(for: viewModel.displayState)
         let screenFrame = screen.frame
         let originX = screenFrame.midX - size.width / 2
         // NSWindow 坐标原点在左下；让顶边对齐 screenFrame.maxY
