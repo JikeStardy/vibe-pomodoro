@@ -346,6 +346,10 @@ struct NotchView: View {
         let work = DispatchWorkItem { [viewModel] in
             withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
                 viewModel.isHovering = hovering
+                // 鼠标离开时重置 pin 状态，确保面板一定能收起
+                if !hovering {
+                    viewModel.isPinnedExpanded = false
+                }
             }
         }
         hoverDebounce = work
