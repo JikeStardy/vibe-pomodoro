@@ -96,7 +96,6 @@ class ClaudeSessionManager: ObservableObject {
 
             case "waiting_for_response":
                 state.phase = .waitingForResponse(event.message)
-                // No auto-dismiss — persists until next event
 
             case "waiting_for_approval":
                 let context = PermissionContext(
@@ -126,8 +125,12 @@ class ClaudeSessionManager: ObservableObject {
         switch event.status {
         case "waiting_for_input":
             scheduleAutoDismiss(for: source, after: 5.0)
+        case "waiting_for_response":
+            scheduleAutoDismiss(for: source, after: 10.0)
         default:
-            if event.event == "StopFailure" {
+            // Auto-dismiss any error state (StopFailure or other errors)
+            let currentState = source == "codex" ? codexState : claudeState
+            if case .error = currentState.phase {
                 scheduleAutoDismiss(for: source, after: 5.0)
             }
         }
