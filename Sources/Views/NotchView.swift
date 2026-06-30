@@ -47,8 +47,6 @@ struct NotchView: View {
                    value: viewModel.displayState)
         .animation(.easeInOut(duration: 0.22), value: timer.status)
         .scaleEffect(viewModel.displayState == .expanded ? 1.0 : 0.998)
-        .animation(.spring(response: 0.32, dampingFraction: 0.72),
-                   value: viewModel.displayState)
     }
 
     // MARK: - State-driven content
@@ -118,6 +116,8 @@ struct NotchView: View {
                 compactAIIndicator
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
+            .onAppear { updatePulsingState() }
+            .onChange(of: claudeManager.currentPhase) { _ in updatePulsingState() }
         }
     }
 
@@ -132,8 +132,6 @@ struct NotchView: View {
                     .frame(width: 6, height: 6)
                     .opacity(claudeDotPulsing ? 1.0 : 0.3)
                     .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: claudeDotPulsing)
-                    .onAppear { claudeDotPulsing = true }
-                    .onDisappear { claudeDotPulsing = false }
                 Text(sourceLabel)
                     .font(.system(size: 9, weight: .medium))
                     .foregroundColor(claudeAmberColor)
@@ -164,8 +162,6 @@ struct NotchView: View {
                     .frame(width: 6, height: 6)
                     .opacity(claudeDotPulsing ? 1.0 : 0.3)
                     .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: claudeDotPulsing)
-                    .onAppear { claudeDotPulsing = true }
-                    .onDisappear { claudeDotPulsing = false }
                 Text(sourceLabel)
                     .font(.system(size: 9, weight: .medium))
                     .foregroundColor(claudeRedColor)
@@ -180,8 +176,6 @@ struct NotchView: View {
                     .frame(width: 6, height: 6)
                     .opacity(claudeDotPulsing ? 1.0 : 0.3)
                     .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: claudeDotPulsing)
-                    .onAppear { claudeDotPulsing = true }
-                    .onDisappear { claudeDotPulsing = false }
                 Text(sourceLabel)
                     .font(.system(size: 9, weight: .medium))
                     .foregroundColor(claudeAmberColor)
@@ -334,6 +328,21 @@ struct NotchView: View {
                 )
             }
             .buttonStyle(.plain)
+        }
+    }
+
+    // MARK: - Animation state helpers
+
+    private func updatePulsingState() {
+        let shouldPulse: Bool
+        switch claudeManager.currentPhase {
+        case .processing, .waitingForApproval, .waitingForResponse:
+            shouldPulse = true
+        default:
+            shouldPulse = false
+        }
+        if claudeDotPulsing != shouldPulse {
+            claudeDotPulsing = shouldPulse
         }
     }
 
