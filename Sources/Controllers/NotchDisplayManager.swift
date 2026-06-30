@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import CoreGraphics
 
 /// 多显示器 Notch 窗口管理器：为每个选中的显示器创建独立的 NotchWindowController
 final class NotchDisplayManager {
@@ -88,8 +89,10 @@ final class NotchDisplayManager {
 
     /// 判断是否为内建显示器
     private func isBuiltInDisplay(_ screen: NSScreen) -> Bool {
-        let name = screen.localizedName
-        return name.contains("Built-in") || name.contains("内建") || name.contains("内置")
+        if let displayID = screen.deviceDescription[NSDeviceDescriptionKey(rawValue: "NSScreenNumber")] as? CGDirectDisplayID {
+            return CGDisplayIsBuiltin(displayID) != 0
+        }
+        return false
     }
 
     /// 更新所有窗口 ViewModel 上的 connectedDisplays 列表

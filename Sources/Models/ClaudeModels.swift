@@ -2,7 +2,14 @@ import Foundation
 import Combine
 
 // MARK: - AnyCodable (type-erasing Codable wrapper)
-struct AnyCodable: Codable, @unchecked Sendable {
+
+/// Type-erasing Codable wrapper for arbitrary JSON values.
+///
+/// `@unchecked Sendable` is safe because the wrapped `value` is only ever
+/// a JSON-decoded value type (Bool, Int, Double, String, [AnyCodable], [String: AnyCodable])
+/// which are all immutable and safe to pass across concurrency boundaries.
+/// Do NOT mutate the wrapped value after initialization.
+struct AnyCodable: Codable, @unchecked Sendable, Equatable {
     nonisolated(unsafe) let value: Any
 
     init(_ value: Any) { self.value = value }
@@ -30,6 +37,34 @@ struct AnyCodable: Codable, @unchecked Sendable {
         case let array as [Any]: try container.encode(array.map { AnyCodable($0) })
         case let dict as [String: Any]: try container.encode(dict.mapValues { AnyCodable($0) })
         default: throw EncodingError.invalidValue(value, EncodingError.Context(codingPath: [], debugDescription: "Cannot encode value"))
+        }
+    }
+
+    // MARK: Equatable
+
+    static func == (lhs: AnyCodable, rhs: AnyCodable) -> Bool {
+        switch (lhs.value, rhs.value) {
+        case (is NSNull, is NSNull):
+            return true
+        case let (a as Bool, b as Bool):
+            return a == b
+        case let (a as Int, b as Int):
+            return a == b
+        case let (a as Double, b as Double):
+            return a == b
+        case let (a as String, b as String):
+            return a == b
+        case let (a as [Any], b as [Any]):
+            guard a.count == b.count else { return false }
+            return zip(a, b).allSatisfy { AnyCodable($0) == AnyCodable($1) }
+        case let (a as [String: Any], b as [String: Any]):
+            guard a.count == b.count else { return false }
+            return a.allSatisfy { key, val in
+                guard let bVal = b[key] else { return false }
+                return AnyCodable(val) == AnyCodable(bVal)
+            }
+        default:
+            return false
         }
     }
 }
@@ -123,10 +158,6 @@ struct PermissionContext: Sendable, Equatable {
             }
         }
         return nil
-    }
-
-    static func == (lhs: PermissionContext, rhs: PermissionContext) -> Bool {
-        lhs.toolUseId == rhs.toolUseId && lhs.toolName == rhs.toolName && lhs.receivedAt == rhs.receivedAt
     }
 }
 

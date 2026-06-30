@@ -173,9 +173,10 @@ class ClaudeSessionManager: ObservableObject {
         guard case .waitingForApproval(let context) = currentPhase else { return }
         server.respondToPermission(toolUseId: context.toolUseId, decision: "deny", reason: reason)
 
-        // Reset current source's phase to idle
+        // Reset current source's phase to processing (denied tool usually means
+        // the agent will try a different approach and keep working)
         updateState(activeSource) { state in
-            state.phase = .idle
+            state.phase = .processing
         }
 
         // If the other source also has a pending approval, switch to it
@@ -198,15 +199,6 @@ class ClaudeSessionManager: ObservableObject {
     }
 
     // MARK: - Private Helpers
-
-    /// Resets the current source's state (not both sources).
-    private func resetSession() {
-        cancelAutoDismiss(for: activeSource)
-        updateState(activeSource) { state in
-            state = SessionState()
-        }
-        syncPublishedProperties()
-    }
 
     /// Schedules an auto-dismiss for the given source.
     private func scheduleAutoDismiss(for source: String, after seconds: TimeInterval) {

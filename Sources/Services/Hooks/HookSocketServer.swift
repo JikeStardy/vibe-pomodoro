@@ -141,6 +141,7 @@ final class HookSocketServer: @unchecked Sendable {
         acceptSource = source
         isRunning = true
         print("[HookSocketServer] Listening on \(Self.socketPath)")
+        startPendingSweep()
     }
 
     private func stopServer() {
@@ -186,6 +187,10 @@ final class HookSocketServer: @unchecked Sendable {
         // Set SO_NOSIGPIPE on client socket
         var nosigpipe: Int32 = 1
         setsockopt(clientFd, SOL_SOCKET, SO_NOSIGPIPE, &nosigpipe, socklen_t(MemoryLayout<Int32>.size))
+
+        // Set client socket to non-blocking (inherited from listening socket on macOS)
+        let clientFlags = fcntl(clientFd, F_GETFL)
+        _ = fcntl(clientFd, F_SETFL, clientFlags | O_NONBLOCK)
 
         // Handle client in background
         socketQueue.async { [weak self] in
@@ -249,6 +254,9 @@ final class HookSocketServer: @unchecked Sendable {
                 source: event.source
             )
             lock.lock()
+            if let existing = pendingPermissions[toolUseId] {
+                close(existing.clientSocket)
+            }
             pendingPermissions[toolUseId] = pending
             lock.unlock()
 
@@ -283,9 +291,39 @@ final class HookSocketServer: @unchecked Sendable {
 
         data.withUnsafeBytes { bufferPointer in
             guard let baseAddress = bufferPointer.baseAddress else { return }
-            _ = write(fd, baseAddress, data.count)
+            var remaining = data.count
+            var ptr = baseAddress
+            while remaining > 0 {
+                let written = write(fd, ptr, remaining)
+                if written <= 0 { break }
+                remaining -= written
+                ptr = ptr.advanced(by: written)
+            }
         }
         close(fd)
+    }
+
+    // MARK: - Stale Permission Sweeping
+
+    private func sweepStalePermissions() {
+        lock.lock()
+        let now = Date()
+        let stale = pendingPermissions.filter { now.timeIntervalSince($0.value.receivedAt) > 310 }
+        for (key, _) in stale {
+            pendingPermissions.removeValue(forKey: key)
+        }
+        lock.unlock()
+
+        for (_, perm) in stale {
+            close(perm.clientSocket)
+        }
+    }
+
+    private func startPendingSweep() {
+        socketQueue.asyncAfter(deadline: .now() + 60) { [weak self] in
+            self?.sweepStalePermissions()
+            self?.startPendingSweep()
+        }
     }
 
     // MARK: - Helpers

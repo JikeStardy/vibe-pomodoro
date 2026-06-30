@@ -28,6 +28,7 @@ class PomodoroTimer: ObservableObject {
     private var startDate: Date?
     private var pausedTimeRemaining: Int?
     private var sessionStartTime: Date?
+    private var sessionTotalTime: Int = 0
     
     // MARK: - Callbacks
     var onStatusChange: ((PomodoroStatus) -> Void)?
@@ -49,8 +50,9 @@ class PomodoroTimer: ObservableObject {
     }
     
     var progress: Double {
-        guard totalTime > 0 else { return 0 }
-        return 1.0 - (Double(timeRemaining) / Double(totalTime))
+        let activeTotal = status != .idle ? sessionTotalTime : totalTime
+        guard activeTotal > 0 else { return 0 }
+        return 1.0 - (Double(timeRemaining) / Double(activeTotal))
     }
     
     var formattedTime: String {
@@ -78,7 +80,9 @@ class PomodoroTimer: ObservableObject {
     init() {
         self.config = PomodoroConfig.default
         self.timeRemaining = PomodoroConfig.default.workDuration
-        loadConfig()
+        let loaded = loadConfig()
+        config = loaded
+        timeRemaining = loaded.workDuration
         refreshTodayStats()
     }
     
@@ -91,6 +95,7 @@ class PomodoroTimer: ObservableObject {
         stop()
         status = .working
         timeRemaining = config.workDuration
+        sessionTotalTime = config.workDuration
         isPaused = false
         sessionStartTime = Date()
         startTimer()
@@ -105,6 +110,7 @@ class PomodoroTimer: ObservableObject {
         let isLongBreak = currentRound > config.roundsBeforeLongBreak
         status = isLongBreak ? .longBreak : .shortBreak
         timeRemaining = isLongBreak ? config.longBreakDuration : config.shortBreakDuration
+        sessionTotalTime = isLongBreak ? config.longBreakDuration : config.shortBreakDuration
         isPaused = false
         sessionStartTime = Date()
         startTimer()
@@ -212,13 +218,13 @@ class PomodoroTimer: ObservableObject {
         let calendar = Calendar.current
         let todaySessions = sessions.filter { calendar.isDateInToday($0.startTime) }
         
-        todayFocusMinutes = todaySessions
+        todayFocusMinutes = Int(round(todaySessions
             .filter { $0.type == .working }
-            .reduce(0) { $0 + Int($1.endTime.timeIntervalSince($1.startTime)) } / 60
+            .reduce(0.0) { $0 + $1.endTime.timeIntervalSince($1.startTime) } / 60.0))
         
-        todayBreakMinutes = todaySessions
+        todayBreakMinutes = Int(round(todaySessions
             .filter { $0.type == .shortBreak || $0.type == .longBreak }
-            .reduce(0) { $0 + Int($1.endTime.timeIntervalSince($1.startTime)) } / 60
+            .reduce(0.0) { $0 + $1.endTime.timeIntervalSince($1.startTime) } / 60.0))
         
         todayCompletedSessions = todaySessions
             .filter { $0.type == .working && $0.completed }
@@ -261,19 +267,16 @@ class PomodoroTimer: ObservableObject {
     }
     
     private func tick() {
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            guard let startDate = self.startDate else { return }
-            
-            let elapsed = Int(Date().timeIntervalSince(startDate))
-            let initialTime = self.pausedTimeRemaining ?? self.totalTime
-            
-            self.timeRemaining = max(0, initialTime - elapsed)
-            self.onTick?(self.timeRemaining)
-            
-            if self.timeRemaining == 0 {
-                self.complete()
-            }
+        guard let startDate = startDate else { return }
+        
+        let elapsed = Int(Date().timeIntervalSince(startDate))
+        let initialTime = pausedTimeRemaining ?? sessionTotalTime
+        
+        timeRemaining = max(0, initialTime - elapsed)
+        onTick?(timeRemaining)
+        
+        if timeRemaining == 0 {
+            complete()
         }
     }
     
@@ -366,12 +369,28 @@ class PomodoroTimer: ObservableObject {
         }
     }
     
-    private func loadConfig() {
-        if let data = UserDefaults.standard.data(forKey: "pomodoro_config"),
-           let loaded = try? JSONDecoder().decode(PomodoroConfig.self, from: data) {
-            config = loaded
-            timeRemaining = loaded.workDuration
+    private func loadConfig() -> PomodoroConfig {
+        guard let data = UserDefaults.standard.data(forKey: "pomodoro_config") else {
+            return PomodoroConfig.default
         }
+        if let config = try? JSONDecoder().decode(PomodoroConfig.self, from: data) {
+            return config
+        }
+        // Fallback: try partial decode
+        print("[NotchPomodoro] Config decode failed, attempting migration fallback")
+        if let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            return PomodoroConfig(
+                workDuration: dict["workDuration"] as? Int ?? 1500,
+                shortBreakDuration: dict["shortBreakDuration"] as? Int ?? 300,
+                longBreakDuration: dict["longBreakDuration"] as? Int ?? 900,
+                roundsBeforeLongBreak: dict["roundsBeforeLongBreak"] as? Int ?? 4,
+                autoStartBreak: dict["autoStartBreak"] as? Bool ?? false,
+                autoStartWork: dict["autoStartWork"] as? Bool ?? false,
+                selectedDisplayNames: dict["selectedDisplayNames"] as? [String] ?? [],
+                notchGapWidth: dict["notchGapWidth"] as? Int ?? 240
+            )
+        }
+        return PomodoroConfig.default
     }
     
     private func saveSession(_ session: PomodoroSession) {
