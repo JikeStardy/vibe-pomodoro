@@ -80,6 +80,7 @@ class PomodoroTimer: ObservableObject {
     init() {
         self.config = PomodoroConfig.default
         self.timeRemaining = PomodoroConfig.default.workDuration
+        SessionStorage.shared.migrateFromUserDefaults()
         let loaded = loadConfig()
         config = loaded
         timeRemaining = loaded.workDuration
@@ -389,29 +390,41 @@ class PomodoroTimer: ObservableObject {
                 selectedDisplayNames: dict["selectedDisplayNames"] as? [String] ?? [],
                 notchGapWidth: dict["notchGapWidth"] as? Int ?? 240,
                 compactWidth: dict["compactWidth"] as? Int ?? 400,
-                expandedWidth: dict["expandedWidth"] as? Int ?? 360
+                expandedWidth: dict["expandedWidth"] as? Int ?? 360,
+                compactLayout: CompactLayoutConfig.default
             )
         }
         return PomodoroConfig.default
     }
     
     private func saveSession(_ session: PomodoroSession) {
-        var sessions = loadSessions()
-        sessions.append(session)
-        // 只保留最近100条记录
-        if sessions.count > 100 {
-            sessions = Array(sessions.suffix(100))
-        }
-        if let data = try? JSONEncoder().encode(sessions) {
-            UserDefaults.standard.set(data, forKey: "pomodoro_sessions")
-        }
+        SessionStorage.shared.appendSession(session)
     }
     
     private func loadSessions() -> [PomodoroSession] {
-        guard let data = UserDefaults.standard.data(forKey: "pomodoro_sessions"),
-              let sessions = try? JSONDecoder().decode([PomodoroSession].self, from: data) else {
-            return []
+        return SessionStorage.shared.loadSessions()
+    }
+    
+    /// Get daily statistics for a given month
+    func getDailyStats(for month: Date) -> [DailyStats] {
+        let calendar = Calendar.current
+        let sessions = SessionStorage.shared.loadSessions()
+        let range = calendar.range(of: .day, in: .month, for: month)!
+        let year = calendar.component(.year, from: month)
+        let monthNum = calendar.component(.month, from: month)
+        
+        return range.compactMap { day -> DailyStats? in
+            let components = DateComponents(year: year, month: monthNum, day: day)
+            guard let date = calendar.date(from: components) else { return nil }
+            let daySessions = sessions.filter { calendar.isDate($0.startTime, inSameDayAs: date) }
+            guard !daySessions.isEmpty else { return nil }
+            
+            let focusMinutes = Int(round(daySessions
+                .filter { $0.type == .working }
+                .reduce(0.0) { $0 + $1.endTime.timeIntervalSince($1.startTime) } / 60.0))
+            let completedSessions = daySessions.filter { $0.type == .working && $0.completed }.count
+            
+            return DailyStats(date: date, focusMinutes: focusMinutes, completedSessions: completedSessions, totalSessions: daySessions.count)
         }
-        return sessions
     }
 }

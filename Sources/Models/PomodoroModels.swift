@@ -21,8 +21,47 @@ struct PomodoroConfig: Codable {
     var notchGapWidth: Int = 240             // 刘海占位区域宽度（pt）
     var compactWidth: Int = 400    // 收起状态窗口宽度（pt）
     var expandedWidth: Int = 360   // 展开状态窗口宽度（pt）
+    var compactLayout: CompactLayoutConfig = .default
     
     static let `default` = PomodoroConfig()
+}
+
+// MARK: - Compact Layout Configuration
+
+struct CompactLayoutConfig: Codable, Equatable {
+    var elements: [CompactElement] = CompactElement.defaultOrder
+    
+    static let `default` = CompactLayoutConfig()
+}
+
+struct CompactElement: Codable, Identifiable, Equatable {
+    let id: String           // "progressRing", "statusLabel", "timer", "aiIndicator"
+    var isVisible: Bool = true
+    var fontSize: Int = 0    // 0 = use default; otherwise override
+    var wing: Wing = .left
+    var order: Int = 0
+    
+    enum Wing: String, Codable {
+        case left, right
+    }
+    
+    /// User-facing display name
+    var displayName: String {
+        switch id {
+        case "progressRing": return "进度环"
+        case "statusLabel": return "状态文字"
+        case "timer": return "倒计时"
+        case "aiIndicator": return "AI 指示灯"
+        default: return id
+        }
+    }
+    
+    static let defaultOrder: [CompactElement] = [
+        CompactElement(id: "progressRing", isVisible: true, fontSize: 0, wing: .left, order: 0),
+        CompactElement(id: "statusLabel", isVisible: true, fontSize: 0, wing: .left, order: 1),
+        CompactElement(id: "timer", isVisible: true, fontSize: 0, wing: .left, order: 2),
+        CompactElement(id: "aiIndicator", isVisible: true, fontSize: 0, wing: .right, order: 0),
+    ]
 }
 
 /// 番茄钟会话记录
@@ -39,5 +78,19 @@ struct PomodoroSession: Codable, Identifiable {
         self.startTime = startTime
         self.endTime = endTime
         self.completed = completed
+    }
+}
+
+/// Daily aggregated statistics for calendar view
+struct DailyStats: Identifiable {
+    let date: Date
+    let focusMinutes: Int
+    let completedSessions: Int
+    let totalSessions: Int
+    
+    var id: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: date)
     }
 }

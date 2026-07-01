@@ -4,12 +4,13 @@ import Combine
 
 // MARK: - Display State
 
-/// 灵动岛显示阶段：闲置 / 紧凑 / 展开 / 设置 / Claude审批 / Claude问题 / Claude通知
+/// 灵动岛显示阶段：闲置 / 紧凑 / 展开 / 设置 / 日历 / Claude审批 / Claude问题 / Claude通知
 enum NotchDisplayState: Equatable {
     case idle      // 计时器空闲，最小指示器
     case compact   // 计时进行中，紧凑信息
     case expanded  // 悬停或点击展开，完整控制面板
     case settings  // 设置面板
+    case calendar  // 日历面板
     case breakPrompt  // 休息提示弹窗（半高）
     case claudeApproval    // Claude Code 权限请求 UI
     case claudeQuestion    // Claude Code 问题选择 UI
@@ -25,6 +26,8 @@ enum NotchDisplayState: Equatable {
         case .expanded:
             return NSSize(width: 360, height: 280)
         case .settings:
+            return NSSize(width: 380, height: 420)
+        case .calendar:
             return NSSize(width: 380, height: 420)
         case .breakPrompt:
             return NSSize(width: 360, height: 180)
@@ -50,6 +53,8 @@ final class NotchViewModel: ObservableObject {
     @Published var isHovering: Bool = false
     /// 是否打开设置面板（最高优先级，强制进入 .settings 态）
     @Published var showSettings: Bool = false
+    /// 是否打开日历面板
+    @Published var showCalendar: Bool = false
     /// 计时器是否处于活跃状态
     @Published private(set) var isTimerActive: Bool = false
     /// 冷启动就绪标志：用于在窗口初始定位完成前忽略悬停展开
@@ -121,16 +126,18 @@ final class NotchViewModel: ObservableObject {
             .sink { [weak self] count in self?.activeSessionCount = count }
             .store(in: &cancellables)
 
-        // 多态合并：设置 > Claude审批 > Claude问题 > 休息提示 > Claude通知 > 展开 > 紧凑 > 闲置
+        // 多态合并：设置 > 日历 > Claude审批 > Claude问题 > 休息提示 > Claude通知 > 展开 > 紧凑 > 闲置
         Publishers.CombineLatest4(
             Publishers.CombineLatest4($isPinnedExpanded, $isHovering, $isTimerActive, $showSettings),
-            $isReady,
+            Publishers.CombineLatest($isReady, $showCalendar),
             $showBreakPrompt,
             $claudePhase
         )
-            .map { quad, ready, breakPrompt, claude -> NotchDisplayState in
+            .map { quad, readyCalendar, breakPrompt, claude -> NotchDisplayState in
                 let (pinned, hovering, active, settings) = quad
+                let (ready, calendar) = readyCalendar
                 if settings { return .settings }
+                if calendar { return .calendar }
                 if claude.isWaitingForApproval { return .claudeApproval }
                 if claude.isAskingQuestion { return .claudeQuestion }
                 if breakPrompt { return .breakPrompt }
@@ -157,6 +164,7 @@ final class NotchViewModel: ObservableObject {
 
     /// 打开设置面板
     func openSettings() {
+        showCalendar = false
         showSettings = true
     }
 
@@ -165,11 +173,23 @@ final class NotchViewModel: ObservableObject {
         showSettings = false
     }
 
+    /// 打开日历面板
+    func openCalendar() {
+        showSettings = false
+        showCalendar = true
+    }
+
+    /// 关闭日历面板
+    func closeCalendar() {
+        showCalendar = false
+    }
+
     /// 收起所有展开状态（用于按钮触发后回到刘海形态）
     func collapse() {
         isPinnedExpanded = false
         isHovering = false
         showSettings = false
+        showCalendar = false
     }
 
     /// 触发休息提示（5秒后自动消失）
@@ -303,6 +323,8 @@ final class NotchWindowController: NSWindowController {
         case .expanded:
             return NSSize(width: CGFloat(config.expandedWidth), height: 280)
         case .settings:
+            return NSSize(width: CGFloat(config.expandedWidth) + 20, height: 420)
+        case .calendar:
             return NSSize(width: CGFloat(config.expandedWidth) + 20, height: 420)
         case .breakPrompt:
             return NSSize(width: CGFloat(config.expandedWidth), height: 180)

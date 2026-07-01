@@ -15,6 +15,7 @@ struct NotchView: View {
     @State private var claudeDotPulsing: Bool = false
     @State private var claudeSpinAngle: Double = 0
     @State var questionInput: String = ""
+    @State var calendarMonth: Date = Date()
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -36,8 +37,9 @@ struct NotchView: View {
             scheduleHover(hovering)
         }
         .onTapGesture {
-            // 设置态/Claude审批态/Claude问题态/Claude通知态下不响应主体点击
+            // 设置态/日历态/Claude审批态/Claude问题态/Claude通知态下不响应主体点击
             guard viewModel.displayState != .settings,
+                  viewModel.displayState != .calendar,
                   viewModel.displayState != .claudeApproval,
                   viewModel.displayState != .claudeQuestion,
                   viewModel.displayState != .claudeNotification else { return }
@@ -70,6 +72,9 @@ struct NotchView: View {
         case .settings:
             settingsContent
                 .transition(.opacity.combined(with: .move(edge: .bottom)))
+        case .calendar:
+            calendarContent
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
         case .breakPrompt:
             breakPromptContent
                 .transition(.opacity.combined(with: .scale(scale: 0.94)))
@@ -89,40 +94,67 @@ struct NotchView: View {
 
     private var compactContent: some View {
         HStack(spacing: 0) {
-            // 左翼：进度环 + 阶段文字 + 倒计时
+            // Left wing: elements with wing == .left, sorted by order
             HStack(spacing: 6) {
-                ZStack {
-                    Circle()
-                        .stroke(Color.white.opacity(0.15), lineWidth: 1.5)
-                    Circle()
-                        .trim(from: 0, to: max(0.001, CGFloat(timer.progress)))
-                        .stroke(accentColor, style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
-                        .rotationEffect(.degrees(-90))
+                let leftElements = timer.config.compactLayout.elements
+                    .filter { $0.wing == .left && $0.isVisible }
+                    .sorted { $0.order < $1.order }
+                ForEach(leftElements) { element in
+                    compactElement(for: element)
                 }
-                .frame(width: 12, height: 12)
-
-                Text(compactStatusLabel)
-                    .font(.system(size: 10, weight: .medium, design: .rounded))
-                    .foregroundColor(.white.opacity(0.7))
-                    .lineLimit(1)
-
-                Text(timer.formattedTime)
-                    .font(.system(size: 12, weight: .medium, design: .monospaced))
-                    .monospacedDigit()
-                    .foregroundColor(.white)
-                    .kerning(0.5)
-                    .lineLimit(1)
             }
 
-            // 中央占位空间：物理刘海宽度，不可用于任何内容
+            // Center: physical notch gap
             Spacer()
                 .frame(width: CGFloat(timer.config.notchGapWidth))
 
-            // 右翼：AI状态（独占右侧空间）
+            // Right wing: elements with wing == .right, sorted by order
             HStack(spacing: 6) {
-                compactAIIndicator
+                let rightElements = timer.config.compactLayout.elements
+                    .filter { $0.wing == .right && $0.isVisible }
+                    .sorted { $0.order < $1.order }
+                ForEach(rightElements) { element in
+                    compactElement(for: element)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+    }
+
+    @ViewBuilder
+    private func compactElement(for element: CompactElement) -> some View {
+        switch element.id {
+        case "progressRing":
+            ZStack {
+                Circle()
+                    .stroke(Color.white.opacity(0.15), lineWidth: 1.5)
+                Circle()
+                    .trim(from: 0, to: max(0.001, CGFloat(timer.progress)))
+                    .stroke(accentColor, style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+            }
+            .frame(width: element.fontSize > 0 ? CGFloat(element.fontSize) : 12,
+                   height: element.fontSize > 0 ? CGFloat(element.fontSize) : 12)
+
+        case "statusLabel":
+            Text(compactStatusLabel)
+                .font(.system(size: element.fontSize > 0 ? CGFloat(element.fontSize) : 10, weight: .medium, design: .rounded))
+                .foregroundColor(.white.opacity(0.7))
+                .lineLimit(1)
+
+        case "timer":
+            Text(timer.formattedTime)
+                .font(.system(size: element.fontSize > 0 ? CGFloat(element.fontSize) : 12, weight: .medium, design: .monospaced))
+                .monospacedDigit()
+                .foregroundColor(.white)
+                .kerning(0.5)
+                .lineLimit(1)
+
+        case "aiIndicator":
+            compactAIIndicator
+
+        default:
+            EmptyView()
         }
     }
 
@@ -240,6 +272,14 @@ struct NotchView: View {
                                 .stroke(Color.white.opacity(0.12), lineWidth: 0.6)
                         )
                 }
+
+                // 日历入口
+                Button(action: { viewModel.openCalendar() }) {
+                    Image(systemName: "calendar")
+                        .font(.system(size: 11))
+                        .foregroundColor(.white.opacity(0.5))
+                }
+                .buttonStyle(.plain)
 
                 // 设置入口
                 Button(action: { viewModel.openSettings() }) {

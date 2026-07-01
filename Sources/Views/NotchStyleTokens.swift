@@ -9,6 +9,7 @@ extension NotchView {
         case .idle, .compact: return 18
         case .expanded:       return 24
         case .settings:       return 24
+        case .calendar:       return 24
         case .breakPrompt:    return 24
         case .claudeApproval: return 24
         case .claudeQuestion: return 24
@@ -21,6 +22,7 @@ extension NotchView {
         case .idle, .compact: return 12 // 内容已位于左右翼，主体水平内边距收窄
         case .expanded:       return 18
         case .settings:       return 18
+        case .calendar:       return 18
         case .breakPrompt:    return 18
         case .claudeApproval: return 18
         case .claudeQuestion: return 18
@@ -33,6 +35,7 @@ extension NotchView {
         case .idle, .compact: return 12
         case .expanded:       return 54
         case .settings:       return 14
+        case .calendar:       return 14
         case .breakPrompt:    return 54
         case .claudeApproval: return 54
         case .claudeQuestion: return 54
@@ -46,6 +49,7 @@ extension NotchView {
         case .compact:     return 12
         case .expanded:    return 16
         case .settings:    return 16
+        case .calendar:    return 16
         case .breakPrompt: return 16
         case .claudeApproval: return 16
         case .claudeQuestion: return 16

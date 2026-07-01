@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 // MARK: - NotchView Settings Content
 
@@ -248,6 +249,151 @@ extension NotchView {
                         isCodexHookInstalled = HookInstaller.isCodexInstalled()
                     }
 
+                    // 布局
+                    settingsSection(title: "布局") {
+                        ForEach(Array(timer.config.compactLayout.elements.enumerated()), id: \.element.id) { index, element in
+                            HStack(spacing: 8) {
+                                // Visibility toggle
+                                Toggle("", isOn: Binding(
+                                    get: { timer.config.compactLayout.elements[index].isVisible },
+                                    set: { timer.config.compactLayout.elements[index].isVisible = $0 }
+                                ))
+                                .toggleStyle(.switch)
+                                .scaleEffect(0.6)
+                                .frame(width: 36)
+
+                                // Element name
+                                Text(element.displayName)
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundColor(.white.opacity(0.8))
+                                    .frame(width: 60, alignment: .leading)
+
+                                // Wing selector
+                                Picker("", selection: Binding(
+                                    get: { timer.config.compactLayout.elements[index].wing },
+                                    set: { timer.config.compactLayout.elements[index].wing = $0 }
+                                )) {
+                                    Text("左").tag(CompactElement.Wing.left)
+                                    Text("右").tag(CompactElement.Wing.right)
+                                }
+                                .pickerStyle(.segmented)
+                                .frame(width: 60)
+
+                                // Font size stepper (0 = default)
+                                HStack(spacing: 2) {
+                                    Button(action: {
+                                        let current = timer.config.compactLayout.elements[index].fontSize
+                                        timer.config.compactLayout.elements[index].fontSize = max(0, current - 1)
+                                    }) {
+                                        Image(systemName: "minus")
+                                            .font(.system(size: 8))
+                                            .foregroundColor(.white.opacity(0.6))
+                                    }
+                                    .buttonStyle(.plain)
+
+                                    Text(element.fontSize == 0 ? "默认" : "\(element.fontSize)pt")
+                                        .font(.system(size: 9))
+                                        .foregroundColor(.white.opacity(0.5))
+                                        .frame(width: 32)
+
+                                    Button(action: {
+                                        let current = timer.config.compactLayout.elements[index].fontSize
+                                        let newVal = current == 0 ? 10 : current + 1
+                                        timer.config.compactLayout.elements[index].fontSize = min(20, newVal)
+                                    }) {
+                                        Image(systemName: "plus")
+                                            .font(.system(size: 8))
+                                            .foregroundColor(.white.opacity(0.6))
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+
+                                Spacer()
+
+                                // Order buttons (within same wing)
+                                VStack(spacing: 0) {
+                                    Button(action: { moveElement(at: index, direction: -1) }) {
+                                        Image(systemName: "chevron.up")
+                                            .font(.system(size: 8))
+                                            .foregroundColor(.white.opacity(0.5))
+                                    }
+                                    .buttonStyle(.plain)
+                                    Button(action: { moveElement(at: index, direction: 1) }) {
+                                        Image(systemName: "chevron.down")
+                                            .font(.system(size: 8))
+                                            .foregroundColor(.white.opacity(0.5))
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 4)
+                        }
+
+                        // Reset button
+                        Button(action: {
+                            timer.config.compactLayout = .default
+                        }) {
+                            Text("恢复默认布局")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(.white.opacity(0.6))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 6)
+                                .background(RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.05)))
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, 12)
+                    }
+
+                    // 数据
+                    settingsSection(title: "数据") {
+                        // Session count
+                        HStack {
+                            Text("会话记录")
+                                .font(.system(size: 11))
+                                .foregroundColor(.white.opacity(0.7))
+                            Spacer()
+                            Text("\(SessionStorage.shared.loadSessions().count) 条")
+                                .font(.system(size: 11))
+                                .foregroundColor(.white.opacity(0.5))
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+
+                        // Export button
+                        Button(action: { exportSessions() }) {
+                            HStack {
+                                Image(systemName: "square.and.arrow.up")
+                                    .font(.system(size: 11))
+                                Text("导出数据")
+                                    .font(.system(size: 11, weight: .medium))
+                            }
+                            .foregroundColor(.white.opacity(0.8))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .background(RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.08)))
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, 12)
+
+                        // Import button
+                        Button(action: { importSessions() }) {
+                            HStack {
+                                Image(systemName: "square.and.arrow.down")
+                                    .font(.system(size: 11))
+                                Text("导入数据")
+                                    .font(.system(size: 11, weight: .medium))
+                            }
+                            .foregroundColor(.white.opacity(0.8))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .background(RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.08)))
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 8)
+                    }
+
                     // 关于
                     HStack {
                         Text("版本")
@@ -360,5 +506,53 @@ extension NotchView {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
+    }
+
+    // MARK: - Export / Import
+
+    private func moveElement(at index: Int, direction: Int) {
+        var elements = timer.config.compactLayout.elements
+        let element = elements[index]
+        // Find elements in same wing
+        let sameWing = elements.enumerated().filter { $0.element.wing == element.wing }.sorted { $0.element.order < $1.element.order }
+        guard let wingIndex = sameWing.firstIndex(where: { $0.offset == index }) else { return }
+        let targetWingIndex = wingIndex + direction
+        guard targetWingIndex >= 0 && targetWingIndex < sameWing.count else { return }
+
+        // Swap orders
+        let targetGlobalIndex = sameWing[targetWingIndex].offset
+        let tempOrder = elements[index].order
+        elements[index].order = elements[targetGlobalIndex].order
+        elements[targetGlobalIndex].order = tempOrder
+        timer.config.compactLayout.elements = elements
+    }
+
+    private func exportSessions() {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "vibe-pomodoro-sessions.json"
+        panel.allowedContentTypes = [.json]
+        if panel.runModal() == .OK, let url = panel.url {
+            let source = SessionStorage.shared.filePath
+            if FileManager.default.fileExists(atPath: source.path) {
+                try? FileManager.default.copyItem(at: source, to: url)
+            } else {
+                let sessions = SessionStorage.shared.loadSessions()
+                if let data = try? JSONEncoder().encode(sessions) {
+                    try? data.write(to: url, options: .atomic)
+                }
+            }
+        }
+    }
+
+    private func importSessions() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = false
+        if panel.runModal() == .OK, let url = panel.url {
+            let count = SessionStorage.shared.importFromFile(url)
+            if count > 0 {
+                timer.refreshTodayStats()
+            }
+        }
     }
 }
