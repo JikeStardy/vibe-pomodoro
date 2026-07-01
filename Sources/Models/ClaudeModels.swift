@@ -83,8 +83,9 @@ struct HookEvent: Codable, Sendable {
     let notificationType: String?
     let message: String?
     var source: String  // "claude" or "codex"
+    var permissionSuggestions: [[String: AnyCodable]]?
 
-    init(sessionId: String, cwd: String, event: String, status: String, pid: Int?, tty: String?, tool: String?, toolInput: [String: AnyCodable]?, toolUseId: String?, notificationType: String?, message: String?, source: String = "claude") {
+    init(sessionId: String, cwd: String, event: String, status: String, pid: Int?, tty: String?, tool: String?, toolInput: [String: AnyCodable]?, toolUseId: String?, notificationType: String?, message: String?, source: String = "claude", permissionSuggestions: [[String: AnyCodable]]? = nil) {
         self.sessionId = sessionId
         self.cwd = cwd
         self.event = event
@@ -97,6 +98,7 @@ struct HookEvent: Codable, Sendable {
         self.notificationType = notificationType
         self.message = message
         self.source = source
+        self.permissionSuggestions = permissionSuggestions
     }
 
     enum CodingKeys: String, CodingKey {
@@ -107,11 +109,13 @@ struct HookEvent: Codable, Sendable {
         case notificationType = "notification_type"
         case message
         case source
+        case permissionSuggestions = "permission_suggestions"
     }
 
-    /// Whether this event expects a response (permission request)
+    /// Whether this event expects a response (permission request or question)
     var expectsResponse: Bool {
-        event == "PermissionRequest" && status == "waiting_for_approval"
+        (event == "PermissionRequest" && status == "waiting_for_approval") ||
+        status == "asking_question"
     }
 }
 
@@ -119,6 +123,18 @@ struct HookEvent: Codable, Sendable {
 struct HookResponse: Codable {
     let decision: String  // "allow", "deny", or "ask"
     let reason: String?
+    let updatedPermissions: [[String: AnyCodable]]?
+
+    init(decision: String, reason: String? = nil, updatedPermissions: [[String: AnyCodable]]? = nil) {
+        self.decision = decision
+        self.reason = reason
+        self.updatedPermissions = updatedPermissions
+    }
+}
+
+// MARK: - Question Response (sent back for AskUserQuestion answers)
+struct QuestionResponse: Codable {
+    let answers: [String: String]
 }
 
 // MARK: - Permission Context
@@ -126,6 +142,7 @@ struct PermissionContext: Sendable, Equatable {
     let toolUseId: String
     let toolName: String
     let toolInput: [String: AnyCodable]?
+    let suggestions: [[String: AnyCodable]]?
     let receivedAt: Date
 
     /// Format tool input for display
@@ -161,6 +178,29 @@ struct PermissionContext: Sendable, Equatable {
     }
 }
 
+// MARK: - Question Context (AskUserQuestion)
+struct QuestionContext: Sendable, Equatable {
+    let toolUseId: String
+    let questions: [QuestionItem]
+    let receivedAt: Date
+
+    static func == (lhs: QuestionContext, rhs: QuestionContext) -> Bool {
+        lhs.toolUseId == rhs.toolUseId
+    }
+}
+
+struct QuestionItem: Sendable, Equatable {
+    let question: String
+    let header: String?
+    let options: [QuestionOption]?
+    let multiSelect: Bool
+}
+
+struct QuestionOption: Sendable, Equatable {
+    let label: String
+    let description: String?
+}
+
 // MARK: - Claude Session Phase (state machine)
 enum ClaudeSessionPhase: Sendable, Equatable {
     case idle
@@ -168,18 +208,24 @@ enum ClaudeSessionPhase: Sendable, Equatable {
     case waitingForInput
     case waitingForResponse(String?)  // question text
     case waitingForApproval(PermissionContext)
+    case askingQuestion(QuestionContext)
     case compacting
     case error(String)
 
     var needsAttention: Bool {
         switch self {
-        case .waitingForApproval, .waitingForInput, .waitingForResponse: return true
+        case .waitingForApproval, .waitingForInput, .waitingForResponse, .askingQuestion: return true
         default: return false
         }
     }
 
     var isWaitingForApproval: Bool {
         if case .waitingForApproval = self { return true }
+        return false
+    }
+
+    var isAskingQuestion: Bool {
+        if case .askingQuestion = self { return true }
         return false
     }
 
@@ -204,6 +250,7 @@ enum ClaudeSessionPhase: Sendable, Equatable {
         case (.waitingForInput, .waitingForInput): return true
         case (.waitingForResponse(let a), .waitingForResponse(let b)): return a == b
         case (.waitingForApproval(let a), .waitingForApproval(let b)): return a == b
+        case (.askingQuestion(let a), .askingQuestion(let b)): return a == b
         case (.compacting, .compacting): return true
         case (.error(let a), .error(let b)): return a == b
         default: return false
@@ -213,6 +260,16 @@ enum ClaudeSessionPhase: Sendable, Equatable {
 
 // MARK: - Pending Permission (internal tracking)
 struct PendingPermission: Sendable {
+    let sessionId: String
+    let toolUseId: String
+    let clientSocket: Int32
+    let event: HookEvent
+    let receivedAt: Date
+    let source: String  // "claude" or "codex"
+}
+
+// MARK: - Pending Question (internal tracking)
+struct PendingQuestion: Sendable {
     let sessionId: String
     let toolUseId: String
     let clientSocket: Int32

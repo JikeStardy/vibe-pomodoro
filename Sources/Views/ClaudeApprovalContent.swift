@@ -40,7 +40,7 @@ extension NotchView {
             Spacer(minLength: 0)
 
             // Action buttons
-            HStack(spacing: 20) {
+            HStack(spacing: 12) {
                 Button(action: { claudeManager.approvePermission() }) {
                     HStack(spacing: 5) {
                         Image(systemName: "checkmark")
@@ -49,7 +49,7 @@ extension NotchView {
                             .font(.system(size: 14, weight: .semibold))
                     }
                     .foregroundColor(.white)
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, 18)
                     .padding(.vertical, 10)
                     .background(
                         Capsule()
@@ -57,6 +57,27 @@ extension NotchView {
                     )
                 }
                 .buttonStyle(.plain)
+
+                // "Always Allow" button — only shown when suggestions are available
+                if case .waitingForApproval(let context) = claudeManager.currentPhase,
+                   let suggestions = context.suggestions, !suggestions.isEmpty {
+                    Button(action: { claudeManager.approvePermissionAlways() }) {
+                        HStack(spacing: 5) {
+                            Image(systemName: "checkmark.seal.fill")
+                                .font(.system(size: 12, weight: .bold))
+                            Text("始终允许")
+                                .font(.system(size: 14, weight: .semibold))
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .background(
+                            Capsule()
+                                .fill(Color(red: 0.2, green: 0.55, blue: 0.8))
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
 
                 Button(action: { claudeManager.denyPermission() }) {
                     HStack(spacing: 5) {
@@ -66,7 +87,7 @@ extension NotchView {
                             .font(.system(size: 14, weight: .semibold))
                     }
                     .foregroundColor(.white)
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, 18)
                     .padding(.vertical, 10)
                     .background(
                         Capsule()

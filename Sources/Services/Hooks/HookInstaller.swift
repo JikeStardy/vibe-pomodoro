@@ -496,7 +496,7 @@ enum HookInstaller {
                 sock.settimeout(TIMEOUT_SECONDS)
                 sock.connect(SOCKET_PATH)
                 sock.sendall(json.dumps(state).encode())
-                if state.get("status") == "waiting_for_approval":
+                if state.get("status") in ("waiting_for_approval", "asking_question"):
                     response = sock.recv(4096)
                     if response:
                         return json.loads(response.decode())
@@ -521,6 +521,7 @@ enum HookInstaller {
             event = data.get("hook_event_name", "")
             cwd = data.get("cwd", "")
             tool_input = data.get("tool_input", {})
+            permission_suggestions = data.get("permission_suggestions", None)
             claude_pid = os.getppid()
 
             state = {
@@ -531,24 +532,31 @@ enum HookInstaller {
                 "source": args.source,
             }
 
-            if event == "UserPromptSubmit":
+            if event == "PreToolUse" and data.get("tool_name") == "AskUserQuestion":
+                # AskUserQuestion: blocking flow — send to app, wait for answer
+                tool_use_id = data.get("tool_use_id", "")
+                state["status"] = "asking_question"
+                state["tool"] = "AskUserQuestion"
+                state["tool_input"] = tool_input
+                state["tool_use_id"] = tool_use_id
+                response = send_event(state)
+                if response and "answers" in response:
+                    output = {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "allow", "updatedInput": {**tool_input, "answers": response["answers"]}}}
+                    print(json.dumps(output))
+                    sys.exit(0)
+                # No response — let default behavior proceed
+                print("{}")
+                sys.exit(0)
+            elif event == "UserPromptSubmit":
                 state["status"] = "processing"
             elif event == "PreToolUse":
                 tool_name = data.get("tool_name")
-                if tool_name == "AskUserQuestion":
-                    state["status"] = "waiting_for_response"
-                    state["tool"] = tool_name
-                    # Extract first question for display
-                    questions = tool_input.get("questions", [])
-                    if questions:
-                        state["message"] = questions[0].get("question", "")
-                else:
-                    state["status"] = "running_tool"
-                    state["tool"] = tool_name
-                    state["tool_input"] = tool_input
-                    tool_use_id = data.get("tool_use_id")
-                    if tool_use_id:
-                        state["tool_use_id"] = tool_use_id
+                state["status"] = "running_tool"
+                state["tool"] = tool_name
+                state["tool_input"] = tool_input
+                tool_use_id = data.get("tool_use_id")
+                if tool_use_id:
+                    state["tool_use_id"] = tool_use_id
             elif event == "PostToolUse":
                 state["status"] = "processing"
                 state["tool"] = data.get("tool_name")
@@ -559,12 +567,17 @@ enum HookInstaller {
                 state["status"] = "waiting_for_approval"
                 state["tool"] = data.get("tool_name")
                 state["tool_input"] = tool_input
+                if permission_suggestions is not None:
+                    state["permission_suggestions"] = permission_suggestions
                 response = send_event(state)
                 if response:
                     decision = response.get("decision", "ask")
                     reason = response.get("reason", "")
+                    updated_permissions = response.get("updatedPermissions", None)
                     if decision == "allow":
                         output = {"hookSpecificOutput": {"hookEventName": "PermissionRequest", "decision": {"behavior": "allow"}}}
+                        if updated_permissions:
+                            output["hookSpecificOutput"]["decision"]["updatedPermissions"] = updated_permissions
                         print(json.dumps(output))
                         sys.exit(0)
                     elif decision == "deny":

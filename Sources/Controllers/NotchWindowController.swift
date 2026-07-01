@@ -4,7 +4,7 @@ import Combine
 
 // MARK: - Display State
 
-/// 灵动岛显示阶段：闲置 / 紧凑 / 展开 / 设置 / Claude审批 / Claude通知
+/// 灵动岛显示阶段：闲置 / 紧凑 / 展开 / 设置 / Claude审批 / Claude问题 / Claude通知
 enum NotchDisplayState: Equatable {
     case idle      // 计时器空闲，最小指示器
     case compact   // 计时进行中，紧凑信息
@@ -12,6 +12,7 @@ enum NotchDisplayState: Equatable {
     case settings  // 设置面板
     case breakPrompt  // 休息提示弹窗（半高）
     case claudeApproval    // Claude Code 权限请求 UI
+    case claudeQuestion    // Claude Code 问题选择 UI
     case claudeNotification // Claude Code 任务完成/错误通知
 
     /// 对应窗口尺寸（与硬件刘海上沿对齐，向下生长）
@@ -29,6 +30,8 @@ enum NotchDisplayState: Equatable {
             return NSSize(width: 360, height: 180)
         case .claudeApproval:
             return NSSize(width: 400, height: 260)
+        case .claudeQuestion:
+            return NSSize(width: 400, height: 300)
         case .claudeNotification:
             return NSSize(width: 360, height: 140)
         }
@@ -63,6 +66,8 @@ final class NotchViewModel: ObservableObject {
     @Published var toolCount: Int = 0
     /// 当前活跃源最近使用的工具名
     @Published var activeToolName: String? = nil
+    /// 活跃会话计数
+    @Published var activeSessionCount: Int = 0
     private var breakPromptDismissWork: DispatchWorkItem?
 
     let claudeManager: ClaudeSessionManager
@@ -110,7 +115,13 @@ final class NotchViewModel: ObservableObject {
             .sink { [weak self] name in self?.activeToolName = name }
             .store(in: &cancellables)
 
-        // 多态合并：设置 > Claude审批 > 休息提示 > Claude通知 > 展开 > 紧凑 > 闲置
+        // 订阅活跃会话数变化
+        claudeManager.$activeSessionCount
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] count in self?.activeSessionCount = count }
+            .store(in: &cancellables)
+
+        // 多态合并：设置 > Claude审批 > Claude问题 > 休息提示 > Claude通知 > 展开 > 紧凑 > 闲置
         Publishers.CombineLatest4(
             Publishers.CombineLatest4($isPinnedExpanded, $isHovering, $isTimerActive, $showSettings),
             $isReady,
@@ -121,6 +132,7 @@ final class NotchViewModel: ObservableObject {
                 let (pinned, hovering, active, settings) = quad
                 if settings { return .settings }
                 if claude.isWaitingForApproval { return .claudeApproval }
+                if claude.isAskingQuestion { return .claudeQuestion }
                 if breakPrompt { return .breakPrompt }
                 if claude.isNotification { return .claudeNotification }
                 if pinned || (hovering && ready) { return .expanded }
@@ -296,6 +308,8 @@ final class NotchWindowController: NSWindowController {
             return NSSize(width: CGFloat(config.expandedWidth), height: 180)
         case .claudeApproval:
             return NSSize(width: CGFloat(config.compactWidth), height: 260)
+        case .claudeQuestion:
+            return NSSize(width: CGFloat(config.compactWidth), height: 300)
         case .claudeNotification:
             return NSSize(width: CGFloat(config.expandedWidth), height: 140)
         }

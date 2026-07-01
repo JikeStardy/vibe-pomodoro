@@ -20,6 +20,7 @@ final class HookSocketServer: @unchecked Sendable {
     private let socketQueue = DispatchQueue(label: "com.notchpomodoro.socket", qos: .userInitiated)
     private let lock = NSLock()
     private var pendingPermissions: [String: PendingPermission] = [:]  // keyed by toolUseId
+    private var pendingQuestions: [String: PendingQuestion] = [:]  // keyed by toolUseId
     private var isRunning = false
 
     // MARK: - FIFO Cache for tool_use_id correlation (PreToolUse -> PermissionRequest)
@@ -49,7 +50,7 @@ final class HookSocketServer: @unchecked Sendable {
     }
 
     /// Send a permission response back to the hook script
-    func respondToPermission(toolUseId: String, decision: String, reason: String?) {
+    func respondToPermission(toolUseId: String, decision: String, reason: String?, updatedPermissions: [[String: AnyCodable]]? = nil) {
         lock.lock()
         guard let pending = pendingPermissions.removeValue(forKey: toolUseId) else {
             lock.unlock()
@@ -57,9 +58,24 @@ final class HookSocketServer: @unchecked Sendable {
         }
         lock.unlock()
 
-        let response = HookResponse(decision: decision, reason: reason)
+        let response = HookResponse(decision: decision, reason: reason, updatedPermissions: updatedPermissions)
         socketQueue.async {
             self.sendResponse(response, to: pending.clientSocket)
+        }
+    }
+
+    /// Send a question response back to the hook script
+    func respondToQuestion(toolUseId: String, answers: [String: String]) {
+        lock.lock()
+        guard let pending = pendingQuestions.removeValue(forKey: toolUseId) else {
+            lock.unlock()
+            return
+        }
+        lock.unlock()
+
+        let response = QuestionResponse(answers: answers)
+        socketQueue.async {
+            self.sendQuestionResponse(response, to: pending.clientSocket)
         }
     }
 
@@ -68,6 +84,13 @@ final class HookSocketServer: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return pendingPermissions.count
+    }
+
+    /// Get current pending questions count
+    var pendingQuestionCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return pendingQuestions.count
     }
 
     // MARK: - Server Lifecycle
@@ -151,14 +174,19 @@ final class HookSocketServer: @unchecked Sendable {
         acceptSource?.cancel()
         acceptSource = nil
 
-        // Close all pending permission sockets
+        // Close all pending permission and question sockets
         lock.lock()
         let pending = pendingPermissions
         pendingPermissions.removeAll()
+        let pendingQ = pendingQuestions
+        pendingQuestions.removeAll()
         lock.unlock()
 
         for (_, perm) in pending {
             close(perm.clientSocket)
+        }
+        for (_, q) in pendingQ {
+            close(q.clientSocket)
         }
 
         // Socket cleanup happens in cancel handler
@@ -242,23 +270,43 @@ final class HookSocketServer: @unchecked Sendable {
             cacheToolUse(toolUseId: toolUseId, toolName: event.tool ?? "unknown", toolInput: event.toolInput)
         }
 
-        // Handle permission requests specially - keep socket open
+        // Handle permission requests and questions specially - keep socket open
         if event.expectsResponse {
             let toolUseId = event.toolUseId ?? resolveToolUseId(for: event) ?? UUID().uuidString
-            let pending = PendingPermission(
-                sessionId: event.sessionId,
-                toolUseId: toolUseId,
-                clientSocket: fd,
-                event: event,
-                receivedAt: Date(),
-                source: event.source
-            )
-            lock.lock()
-            if let existing = pendingPermissions[toolUseId] {
-                close(existing.clientSocket)
+
+            if event.status == "asking_question" {
+                // Question event — store in pendingQuestions
+                let pending = PendingQuestion(
+                    sessionId: event.sessionId,
+                    toolUseId: toolUseId,
+                    clientSocket: fd,
+                    event: event,
+                    receivedAt: Date(),
+                    source: event.source
+                )
+                lock.lock()
+                if let existing = pendingQuestions[toolUseId] {
+                    close(existing.clientSocket)
+                }
+                pendingQuestions[toolUseId] = pending
+                lock.unlock()
+            } else {
+                // Permission request
+                let pending = PendingPermission(
+                    sessionId: event.sessionId,
+                    toolUseId: toolUseId,
+                    clientSocket: fd,
+                    event: event,
+                    receivedAt: Date(),
+                    source: event.source
+                )
+                lock.lock()
+                if let existing = pendingPermissions[toolUseId] {
+                    close(existing.clientSocket)
+                }
+                pendingPermissions[toolUseId] = pending
+                lock.unlock()
             }
-            pendingPermissions[toolUseId] = pending
-            lock.unlock()
 
             // Emit event with resolved toolUseId so the manager uses the same key
             let resolvedEvent = HookEvent(
@@ -273,7 +321,8 @@ final class HookSocketServer: @unchecked Sendable {
                 toolUseId: toolUseId,
                 notificationType: event.notificationType,
                 message: event.message,
-                source: event.source
+                source: event.source,
+                permissionSuggestions: event.permissionSuggestions
             )
             eventSubject.send(resolvedEvent)
         } else {
@@ -288,7 +337,18 @@ final class HookSocketServer: @unchecked Sendable {
             close(fd)
             return
         }
+        writeAndClose(data: data, fd: fd)
+    }
 
+    private func sendQuestionResponse(_ response: QuestionResponse, to fd: Int32) {
+        guard let data = try? JSONEncoder().encode(response) else {
+            close(fd)
+            return
+        }
+        writeAndClose(data: data, fd: fd)
+    }
+
+    private func writeAndClose(data: Data, fd: Int32) {
         data.withUnsafeBytes { bufferPointer in
             guard let baseAddress = bufferPointer.baseAddress else { return }
             var remaining = data.count
@@ -308,14 +368,21 @@ final class HookSocketServer: @unchecked Sendable {
     private func sweepStalePermissions() {
         lock.lock()
         let now = Date()
-        let stale = pendingPermissions.filter { now.timeIntervalSince($0.value.receivedAt) > 310 }
-        for (key, _) in stale {
+        let stalePerms = pendingPermissions.filter { now.timeIntervalSince($0.value.receivedAt) > 310 }
+        for (key, _) in stalePerms {
             pendingPermissions.removeValue(forKey: key)
+        }
+        let staleQuestions = pendingQuestions.filter { now.timeIntervalSince($0.value.receivedAt) > 310 }
+        for (key, _) in staleQuestions {
+            pendingQuestions.removeValue(forKey: key)
         }
         lock.unlock()
 
-        for (_, perm) in stale {
+        for (_, perm) in stalePerms {
             close(perm.clientSocket)
+        }
+        for (_, q) in staleQuestions {
+            close(q.clientSocket)
         }
     }
 
@@ -331,7 +398,8 @@ final class HookSocketServer: @unchecked Sendable {
     private func isSocketPendingPermission(_ fd: Int32) -> Bool {
         lock.lock()
         defer { lock.unlock() }
-        return pendingPermissions.values.contains { $0.clientSocket == fd }
+        return pendingPermissions.values.contains { $0.clientSocket == fd } ||
+               pendingQuestions.values.contains { $0.clientSocket == fd }
     }
 
     // MARK: - FIFO Cache

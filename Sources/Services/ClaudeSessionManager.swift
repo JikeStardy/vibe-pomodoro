@@ -18,6 +18,7 @@ class ClaudeSessionManager: ObservableObject {
     @Published var isSubagentActive: Bool = false
     @Published var activeSource: String = "claude"
     @Published var toolCount: Int = 0
+    @Published var activeSessionCount: Int = 0
 
     // MARK: - Private State (per-source tracking)
 
@@ -25,6 +26,7 @@ class ClaudeSessionManager: ObservableObject {
     private let server: HookSocketServer
     private var claudeState = SessionState()
     private var codexState = SessionState()
+    private var activeSessions: Set<String> = []
 
     // MARK: - Initializer
 
@@ -42,12 +44,22 @@ class ClaudeSessionManager: ObservableObject {
     // MARK: - Event Processing
 
     private func processEvent(_ event: HookEvent) {
+        // Track active sessions
+        if !event.sessionId.isEmpty && event.sessionId != "unknown" {
+            if event.status == "ended" {
+                activeSessions.remove(event.sessionId)
+            } else {
+                activeSessions.insert(event.sessionId)
+            }
+            activeSessionCount = activeSessions.count
+        }
+
         let source = event.source
 
-        // If the active source is showing an approval prompt and this event is
-        // from the *other* source, don't clobber the approval UI — just update
+        // If the active source is showing an approval prompt or question and this event is
+        // from the *other* source, don't clobber the UI — just update
         // the other source's internal state silently.
-        if source != activeSource && currentPhase.isWaitingForApproval {
+        if source != activeSource && (currentPhase.isWaitingForApproval || currentPhase.isAskingQuestion) {
             updateInternalState(for: source, event: event)
             return
         }
@@ -102,9 +114,48 @@ class ClaudeSessionManager: ObservableObject {
                     toolUseId: event.toolUseId ?? "",
                     toolName: event.tool ?? "unknown",
                     toolInput: event.toolInput,
+                    suggestions: event.permissionSuggestions,
                     receivedAt: Date()
                 )
                 state.phase = .waitingForApproval(context)
+
+            case "asking_question":
+                if let toolInput = event.toolInput,
+                   let questionsValue = toolInput["questions"]?.value as? [[String: Any]] {
+                    let items = questionsValue.compactMap { dict -> QuestionItem? in
+                        guard let question = dict["question"] as? String else { return nil }
+                        let header = dict["header"] as? String
+                        let multiSelect = dict["multiSelect"] as? Bool ?? false
+                        var options: [QuestionOption]? = nil
+                        if let optArr = dict["options"] as? [[String: Any]] {
+                            options = optArr.compactMap { opt in
+                                guard let label = opt["label"] as? String else { return nil }
+                                return QuestionOption(label: label, description: opt["description"] as? String)
+                            }
+                        }
+                        return QuestionItem(question: question, header: header, options: options, multiSelect: multiSelect)
+                    }
+                    let context = QuestionContext(
+                        toolUseId: event.toolUseId ?? "",
+                        questions: items,
+                        receivedAt: Date()
+                    )
+                    state.phase = .askingQuestion(context)
+                } else {
+                    // Fallback: treat as a simple question with message text
+                    let item = QuestionItem(
+                        question: event.message ?? "Question",
+                        header: nil,
+                        options: nil,
+                        multiSelect: false
+                    )
+                    let context = QuestionContext(
+                        toolUseId: event.toolUseId ?? "",
+                        questions: [item],
+                        receivedAt: Date()
+                    )
+                    state.phase = .askingQuestion(context)
+                }
 
             case "compacting":
                 state.phase = .compacting
@@ -171,6 +222,31 @@ class ClaudeSessionManager: ObservableObject {
         syncPublishedProperties()
     }
 
+    /// Approve with "always allow" — sends updatedPermissions back so agent persists the rule
+    func approvePermissionAlways() {
+        guard case .waitingForApproval(let context) = currentPhase else { return }
+        server.respondToPermission(
+            toolUseId: context.toolUseId,
+            decision: "allow",
+            reason: nil,
+            updatedPermissions: context.suggestions
+        )
+
+        // Reset current source's phase to processing
+        updateState(activeSource) { state in
+            state.phase = .processing
+        }
+
+        // If the other source also has a pending approval, switch to it
+        let otherSource = activeSource == "codex" ? "claude" : "codex"
+        let otherState = otherSource == "codex" ? codexState : claudeState
+        if otherState.phase.isWaitingForApproval {
+            activeSource = otherSource
+        }
+
+        syncPublishedProperties()
+    }
+
     /// Deny the current pending permission request
     func denyPermission(reason: String? = nil) {
         guard case .waitingForApproval(let context) = currentPhase else { return }
@@ -197,6 +273,18 @@ class ClaudeSessionManager: ObservableObject {
         cancelAutoDismiss(for: activeSource)
         updateState(activeSource) { state in
             state.phase = .idle
+        }
+        syncPublishedProperties()
+    }
+
+    /// Answer the current pending question
+    func answerQuestion(answers: [String: String]) {
+        guard case .askingQuestion(let context) = currentPhase else { return }
+        server.respondToQuestion(toolUseId: context.toolUseId, answers: answers)
+
+        // Return to processing
+        updateState(activeSource) { state in
+            state.phase = .processing
         }
         syncPublishedProperties()
     }

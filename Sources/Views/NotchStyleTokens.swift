@@ -11,6 +11,7 @@ extension NotchView {
         case .settings:       return 24
         case .breakPrompt:    return 24
         case .claudeApproval: return 24
+        case .claudeQuestion: return 24
         case .claudeNotification: return 22
         }
     }
@@ -22,6 +23,7 @@ extension NotchView {
         case .settings:       return 18
         case .breakPrompt:    return 18
         case .claudeApproval: return 18
+        case .claudeQuestion: return 18
         case .claudeNotification: return 16
         }
     }
@@ -33,6 +35,7 @@ extension NotchView {
         case .settings:       return 14
         case .breakPrompt:    return 54
         case .claudeApproval: return 54
+        case .claudeQuestion: return 54
         case .claudeNotification: return 44
         }
     }
@@ -45,6 +48,7 @@ extension NotchView {
         case .settings:    return 16
         case .breakPrompt: return 16
         case .claudeApproval: return 16
+        case .claudeQuestion: return 16
         case .claudeNotification: return 14
         }
     }

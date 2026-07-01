@@ -14,6 +14,7 @@ struct NotchView: View {
     @State var isCodexHookInstalled: Bool = false
     @State private var claudeDotPulsing: Bool = false
     @State private var claudeSpinAngle: Double = 0
+    @State var questionInput: String = ""
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -35,9 +36,10 @@ struct NotchView: View {
             scheduleHover(hovering)
         }
         .onTapGesture {
-            // 设置态/Claude审批态/Claude通知态下不响应主体点击
+            // 设置态/Claude审批态/Claude问题态/Claude通知态下不响应主体点击
             guard viewModel.displayState != .settings,
                   viewModel.displayState != .claudeApproval,
+                  viewModel.displayState != .claudeQuestion,
                   viewModel.displayState != .claudeNotification else { return }
             withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
                 viewModel.toggleExpansion()
@@ -73,6 +75,9 @@ struct NotchView: View {
                 .transition(.opacity.combined(with: .scale(scale: 0.94)))
         case .claudeApproval:
             claudeApprovalContent
+                .transition(.opacity.combined(with: .scale(scale: 0.94)))
+        case .claudeQuestion:
+            claudeQuestionContent
                 .transition(.opacity.combined(with: .scale(scale: 0.94)))
         case .claudeNotification:
             claudeNotificationContent
@@ -143,6 +148,11 @@ struct NotchView: View {
                         .foregroundColor(claudeAmberColor)
                         .lineLimit(1)
                         .fixedSize()
+                }
+                if viewModel.activeSessionCount > 1 {
+                    Text("·\(viewModel.activeSessionCount)")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundColor(claudeAmberColor.opacity(0.7))
                 }
             }
         case .waitingForInput:
@@ -290,6 +300,11 @@ struct NotchView: View {
                         Text("(\(viewModel.toolCount))")
                             .font(.system(size: 10))
                             .foregroundColor(.white.opacity(0.5))
+                    }
+                    if viewModel.activeSessionCount > 1 {
+                        Text("| \(viewModel.activeSessionCount)个会话")
+                            .font(.system(size: 10))
+                            .foregroundColor(.white.opacity(0.4))
                     }
                 }
             }
