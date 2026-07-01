@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""NotchPomodoro Hook - Sends session state via Unix socket"""
+"""VibePomodoro Hook - Sends session state via Unix socket"""
 import argparse
 import json
 import os
 import socket
 import sys
 
-SOCKET_PATH = "/tmp/notch-pomodoro-claude.sock"
+SOCKET_PATH = "/tmp/vibe-pomodoro-claude.sock"
 TIMEOUT_SECONDS = 300
 
 def send_event(state):
@@ -111,7 +111,7 @@ def main():
                 print(json.dumps(output))
                 sys.exit(0)
             elif decision == "deny":
-                output = {"hookSpecificOutput": {"hookEventName": "PermissionRequest", "decision": {"behavior": "deny", "message": reason or "Denied via NotchPomodoro"}}}
+                output = {"hookSpecificOutput": {"hookEventName": "PermissionRequest", "decision": {"behavior": "deny", "message": reason or "Denied via vibe-pomodoro"}}}
                 print(json.dumps(output))
                 sys.exit(0)
         sys.exit(0)

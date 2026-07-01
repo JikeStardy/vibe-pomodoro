@@ -4,7 +4,7 @@
 > - `Sources/Controllers/NotchWindowController.swift` (328 lines)
 > - `Sources/Controllers/NotchDisplayManager.swift` (106 lines)
 
-This document describes how NotchPomodoro creates, positions, and manages the notch overlay windows across single and multi-display configurations.
+This document describes how vibe-pomodoro creates, positions, and manages the notch overlay windows across single and multi-display configurations.
 
 ---
 

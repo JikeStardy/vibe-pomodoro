@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# NotchPomodoro 构建脚本
+# vibe-pomodoro 构建脚本
 # 创建 .app 包结构
 
 set -e
 
-APP_NAME="NotchPomodoro"
+APP_NAME="VibePomodoro"
 BUILD_DIR=".build/release"
 APP_BUNDLE="${BUILD_DIR}/${APP_NAME}.app"
 CONTENTS_DIR="${APP_BUNDLE}/Contents"
@@ -27,7 +27,7 @@ cp "${BUILD_DIR}/${APP_NAME}" "${MACOS_DIR}/"
 cp "Sources/App/Info.plist" "${CONTENTS_DIR}/"
 
 # 复制 entitlements（用于签名）
-cp "Sources/App/NotchPomodoro.entitlements" "${CONTENTS_DIR}/"
+cp "Sources/App/VibePomodoro.entitlements" "${CONTENTS_DIR}/"
 
 # 复制应用图标
 cp "Sources/Resources/AppIcon.icns" "${RESOURCES_DIR}/"

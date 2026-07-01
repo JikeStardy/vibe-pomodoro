@@ -1,6 +1,6 @@
 import Foundation
 
-/// Installs and manages the NotchPomodoro hook script for Claude Code.
+/// Installs and manages the VibePomodoro hook script for Claude Code.
 enum HookInstaller {
     // MARK: - Claude Code Version Detection
     enum ClaudeCodeVersion: String {
@@ -14,7 +14,7 @@ enum HookInstaller {
             .appendingPathComponent(".claude")
         static let hooksDir = claudeDir.appendingPathComponent("hooks")
         static let settingsFile = claudeDir.appendingPathComponent("settings.json")
-        static let hookScript = hooksDir.appendingPathComponent("notch-pomodoro-hook.py")
+        static let hookScript = hooksDir.appendingPathComponent("vibe-pomodoro-hook.py")
     }
 
     struct CodexPaths {
@@ -60,7 +60,7 @@ enum HookInstaller {
         "SubagentStart", "SubagentStop", "PreCompact", "PostCompact"
     ]
 
-    private static let hookIdentifier = "notch-pomodoro-hook.py"
+    private static let hookIdentifier = "vibe-pomodoro-hook.py"
 
     // MARK: - Public API
 
@@ -112,7 +112,7 @@ enum HookInstaller {
         return false
     }
 
-    /// Remove all NotchPomodoro hooks
+    /// Remove all VibePomodoro hooks
     static func uninstall() {
         let fm = FileManager.default
 
@@ -301,7 +301,7 @@ enum HookInstaller {
 
         var hooks = json["hooks"] as? [String: Any] ?? [:]
 
-        // Strip existing notch-pomodoro entries
+        // Strip existing vibe-pomodoro entries
         for (event, value) in hooks {
             if var entries = value as? [[String: Any]] {
                 entries = entries.compactMap { entry -> [String: Any]? in
@@ -382,7 +382,7 @@ enum HookInstaller {
         // Get or create hooks section
         var hooks = json["hooks"] as? [String: Any] ?? [:]
 
-        // Strip existing notch-pomodoro entries from all events (handles both formats)
+        // Strip existing vibe-pomodoro entries from all events (handles both formats)
         for (event, value) in hooks {
             if var entries = value as? [[String: Any]] {
                 entries = entries.compactMap { entry -> [String: Any]? in
@@ -478,14 +478,14 @@ enum HookInstaller {
     private static func hookScriptContent(pythonPath: String) -> String {
         return """
         #!\(pythonPath)
-        \"\"\"NotchPomodoro Hook - Sends session state via Unix socket\"\"\"
+        \"\"\"VibePomodoro Hook - Sends session state via Unix socket\"\"\"
         import argparse
         import json
         import os
         import socket
         import sys
 
-        SOCKET_PATH = "/tmp/notch-pomodoro-claude.sock"
+        SOCKET_PATH = "/tmp/vibe-pomodoro-claude.sock"
         TIMEOUT_SECONDS = 300
 
         def send_event(state):
@@ -581,7 +581,7 @@ enum HookInstaller {
                         print(json.dumps(output))
                         sys.exit(0)
                     elif decision == "deny":
-                        output = {"hookSpecificOutput": {"hookEventName": "PermissionRequest", "decision": {"behavior": "deny", "message": reason or "Denied via NotchPomodoro"}}}
+                        output = {"hookSpecificOutput": {"hookEventName": "PermissionRequest", "decision": {"behavior": "deny", "message": reason or "Denied via vibe-pomodoro"}}}
                         print(json.dumps(output))
                         sys.exit(0)
                 sys.exit(0)

@@ -72,15 +72,15 @@ This is a deliberate choice — the app is self-contained and can be built with 
 import PackageDescription
 
 let package = Package(
-    name: "NotchPomodoro",
+    name: "VibePomodoro",
     platforms: [
         .macOS(.v13)
     ],
     targets: [
         .executableTarget(
-            name: "NotchPomodoro",
+            name: "VibePomodoro",
             path: "Sources",
-            exclude: ["App/Info.plist", "App/NotchPomodoro.entitlements"],
+            exclude: ["App/Info.plist", "App/VibePomodoro.entitlements"],
             resources: [.process("Resources")]
         )
     ]
@@ -89,11 +89,11 @@ let package = Package(
 
 | Configuration | Value |
 |---|---|
-| Package name | `NotchPomodoro` |
+| Package name | `VibePomodoro` |
 | Target type | `.executableTarget` (command-line executable) |
 | Source path | `Sources` (all subdirectories compiled into one target) |
-| Excluded | `App/Info.plist`, `App/NotchPomodoro.entitlements` (bundle metadata, not compiled) |
-| Resources | `.process("Resources")` — processes `AppIcon.icns` and `notch-pomodoro-hook.py` into the bundle |
+| Excluded | `App/Info.plist`, `App/VibePomodoro.entitlements` (bundle metadata, not compiled) |
+| Resources | `.process("Resources")` — processes `AppIcon.icns` and `vibe-pomodoro-hook.py` into the bundle |
 | Dependencies | `[]` (none) |
 
 There is no Xcode project (`.xcodeproj`). The app is built entirely via `swift build` and packaged into a `.app` bundle by `build.sh`.
@@ -105,13 +105,13 @@ SPM processes the `Sources/Resources/` directory via `.process("Resources")`:
 | Resource | Purpose |
 |---|---|
 | `AppIcon.icns` | Application icon (copied into the `.app` bundle's `Contents/Resources/` by `build.sh`) |
-| `notch-pomodoro-hook.py` | Python hook script (also embedded as a string literal in `HookInstaller.swift` and written to disk at runtime) |
+| `vibe-pomodoro-hook.py` | Python hook script (also embedded as a string literal in `HookInstaller.swift` and written to disk at runtime) |
 
-> **Note:** The hook script exists in two forms. The copy in `Resources/` is the source-of-truth for reference, but at runtime `HookInstaller` embeds the script content as a Swift string literal (with a dynamically-detected Python shebang) and writes it to `~/.claude/hooks/notch-pomodoro-hook.py`. This avoids `Bundle.main` resource path issues when running via `swift run` (which doesn't produce a standard `.app` bundle structure).
+> **Note:** The hook script exists in two forms. The copy in `Resources/` is the source-of-truth for reference, but at runtime `HookInstaller` embeds the script content as a Swift string literal (with a dynamically-detected Python shebang) and writes it to `~/.claude/hooks/vibe-pomodoro-hook.py`. This avoids `Bundle.main` resource path issues when running via `swift run` (which doesn't produce a standard `.app` bundle structure).
 
 ## Entitlements
 
-File: `Sources/App/NotchPomodoro.entitlements`
+File: `Sources/App/VibePomodoro.entitlements`
 
 ```xml
 <dict>
@@ -136,11 +136,11 @@ File: `Sources/App/Info.plist` (35 lines)
 | Key | Value | Purpose |
 |---|---|---|
 | `CFBundleDevelopmentRegion` | `zh_CN` | Default locale is Chinese (Simplified). UI strings are primarily in Chinese. |
-| `CFBundleExecutable` | `NotchPomodoro` | Executable name inside the bundle |
+| `CFBundleExecutable` | `VibePomodoro` | Executable name inside the bundle |
 | `CFBundleIconFile` | `AppIcon` | Icon file name (without extension) |
-| `CFBundleIdentifier` | `com.nothpomodoro.app` | Bundle identifier (**note:** contains a typo — "nothpomodoro" instead of "notchpomodoro") |
+| `CFBundleIdentifier` | `com.vibepomodoro.app` | Bundle identifier |
 | `CFBundleInfoDictionaryVersion` | `6.0` | Info.plist version |
-| `CFBundleName` | `NotchPomodoro` | Display name |
+| `CFBundleName` | `vibe-pomodoro` | Display name |
 | `CFBundlePackageType` | `APPL` | Application bundle type |
 | `CFBundleShortVersionString` | `1.0.0` | Version (**note:** the in-app UI displays 1.1.0 — a version mismatch) |
 | `CFBundleVersion` | `1` | Build number |
@@ -152,12 +152,12 @@ File: `Sources/App/Info.plist` (35 lines)
 
 ### Known Issues
 
-1. **Bundle identifier typo**: `com.nothpomodoro.app` should be `com.notchpomodoro.app`.
+1. **Bundle identifier typo**: `com.vibepomodoro.app` — previously contained a typo that has been fixed.
 2. **Version mismatch**: `Info.plist` declares `1.0.0` but the UI shows `1.1.0`.
 
 ## Python (Hook Script Runtime)
 
-The hook script (`notch-pomodoro-hook.py`) requires Python 3.x. The app auto-detects the Python path at install time by checking candidates in order:
+The hook script (`vibe-pomodoro-hook.py`) requires Python 3.x. The app auto-detects the Python path at install time by checking candidates in order:
 
 | Detection order | Path |
 |---|---|
@@ -172,7 +172,7 @@ The detected path is written as the shebang line (`#!`) in the installed hook sc
 
 - Reads JSON from stdin (provided by Claude Code / Codex CLI hook system).
 - Builds a `state` dict with `session_id`, `cwd`, `event`, `pid`, and event-specific fields.
-- Sends the state as JSON over a Unix domain socket to `/tmp/notch-pomodoro-claude.sock`.
+- Sends the state as JSON over a Unix domain socket to `/tmp/vibe-pomodoro-claude.sock`.
 - For `PermissionRequest` events: blocks and waits (up to 300s) for a response from the app, then prints the allow/deny JSON to stdout for the CLI to read.
 - For all other events: fire-and-forget (sends and closes the socket immediately).
 
@@ -181,7 +181,7 @@ The detected path is written as the shebang line (`#!`) in the installed hook sc
 | Property | Value |
 |---|---|
 | Type | Unix domain socket (`AF_UNIX`, `SOCK_STREAM`) |
-| Path | `/tmp/notch-pomodoro-claude.sock` |
+| Path | `/tmp/vibe-pomodoro-claude.sock` |
 | Permissions | `0o600` (owner read/write only) |
 | Read buffer | 128 KB (`131_072` bytes) |
 | Poll timeout | 0.5s (per connection read loop) |

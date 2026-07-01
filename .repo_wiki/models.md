@@ -2,7 +2,7 @@
 
 > **Source files:** `Sources/Models/PomodoroModels.swift`, `Sources/Models/ClaudeModels.swift`
 
-This document provides a complete reference for every data type used in NotchPomodoro's model layer. The models are divided into two domains:
+This document provides a complete reference for every data type used in vibe-pomodoro's model layer. The models are divided into two domains:
 
 1. **Pomodoro domain** — Timer status, configuration, and session history
 2. **Claude integration domain** — Hook events, permission requests, and session phase tracking

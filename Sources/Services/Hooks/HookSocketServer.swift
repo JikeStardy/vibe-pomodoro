@@ -7,7 +7,7 @@ final class HookSocketServer: @unchecked Sendable {
     static let shared = HookSocketServer()
 
     // MARK: - Constants
-    private static let socketPath = "/tmp/notch-pomodoro-claude.sock"
+    private static let socketPath = "/tmp/vibe-pomodoro-claude.sock"
     private static let bufferSize = 131_072  // 128KB read buffer
     private static let pollTimeout: TimeInterval = 0.5
 
@@ -17,7 +17,7 @@ final class HookSocketServer: @unchecked Sendable {
     // MARK: - State
     private var serverSocket: Int32 = -1
     private var acceptSource: DispatchSourceRead?
-    private let socketQueue = DispatchQueue(label: "com.notchpomodoro.socket", qos: .userInitiated)
+    private let socketQueue = DispatchQueue(label: "com.vibepomodoro.socket", qos: .userInitiated)
     private let lock = NSLock()
     private var pendingPermissions: [String: PendingPermission] = [:]  // keyed by toolUseId
     private var pendingQuestions: [String: PendingQuestion] = [:]  // keyed by toolUseId

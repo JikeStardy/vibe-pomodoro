@@ -2,7 +2,7 @@
 
 > **Source file:** `Sources/Views/NotchView.swift` (1159 lines)
 
-This document describes the complete visual design system of NotchPomodoro's notch interface — from the Dynamic Island silhouette shape through every content state, style token, animation, and gesture interaction.
+This document describes the complete visual design system of vibe-pomodoro's notch interface — from the Dynamic Island silhouette shape through every content state, style token, animation, and gesture interaction.
 
 ---
 
@@ -389,7 +389,7 @@ The in-notch settings panel provides full configuration without opening a separa
 | Element | Description |
 |---|---|
 | Claude Code status | `checkmark.circle.fill` (green) if installed, `xmark.circle.fill` (red) if not |
-| Claude Code path | `"~/.claude/hooks/notch-pomodoro-hook.py"` |
+| Claude Code path | `"~/.claude/hooks/vibe-pomodoro-hook.py"` |
 | Claude Code action button | "安装 Hook" or "重新安装" → `HookInstaller.installIfNeeded()` |
 | Codex CLI status | Same checkmark/xmark pattern |
 | Codex CLI path | `"~/.codex/hooks.json"` |
@@ -834,7 +834,7 @@ The label adapts: `"开始休息"` (Start Break) when `pendingBreak` is true, `"
 
 ### Button Style Convention
 
-All interactive buttons in NotchPomodoro use `.buttonStyle(.plain)`:
+All interactive buttons in vibe-pomodoro use `.buttonStyle(.plain)`:
 
 ```swift
 Button(action: { ... }) {

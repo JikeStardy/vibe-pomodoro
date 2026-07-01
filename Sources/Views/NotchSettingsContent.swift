@@ -153,7 +153,7 @@ extension NotchView {
 
                         // Hook path row
                         HStack {
-                            Text("~/.claude/hooks/notch-pomodoro-hook.py")
+                            Text("~/.claude/hooks/vibe-pomodoro-hook.py")
                                 .font(.system(size: 10, design: .monospaced))
                                 .foregroundColor(.white.opacity(0.4))
                             Spacer()

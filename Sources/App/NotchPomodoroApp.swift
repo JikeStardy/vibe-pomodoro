@@ -2,7 +2,7 @@ import SwiftUI
 import UserNotifications
 
 @main
-struct NotchPomodoroApp: App {
+struct VibePomodoroApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     
     var body: some Scene {

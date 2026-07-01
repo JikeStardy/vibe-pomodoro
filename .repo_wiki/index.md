@@ -1,6 +1,6 @@
-# NotchPomodoro
+# vibe-pomodoro
 
-NotchPomodoro is a macOS menu-bar agent application (`LSUIElement = true`) that renders a Pomodoro timer directly inside the MacBook hardware notch. It uses a borderless `NSPanel` anchored to the top of each display and grows downward, visually fusing with the system notch. Beyond the timer, the app integrates with **Claude Code CLI** and **OpenAI Codex CLI** via shell hooks: a Python hook script sends session events over a Unix domain socket to the app, which surfaces permission-approval prompts and activity notifications inside the notch — so you can approve or deny Claude Code tool permissions without leaving your editor.
+vibe-pomodoro is a macOS menu-bar agent application (`LSUIElement = true`) that renders a Pomodoro timer directly inside the MacBook hardware notch. It uses a borderless `NSPanel` anchored to the top of each display and grows downward, visually fusing with the system notch. Beyond the timer, the app integrates with **Claude Code CLI** and **OpenAI Codex CLI** via shell hooks: a Python hook script sends session events over a Unix domain socket to the app, which surfaces permission-approval prompts and activity notifications inside the notch — so you can approve or deny Claude Code tool permissions without leaving your editor.
 
 ## Key Features
 
@@ -24,7 +24,7 @@ NotchPomodoro is a macOS menu-bar agent application (`LSUIElement = true`) that 
 | Dependencies | None (zero external packages) |
 | Build | Swift Package Manager (single executable target) |
 | Persistence | `UserDefaults` only (keys: `pomodoro_config`, `pomodoro_sessions`) |
-| IPC | Unix domain socket at `/tmp/notch-pomodoro-claude.sock` |
+| IPC | Unix domain socket at `/tmp/vibe-pomodoro-claude.sock` |
 | Hook runtime | Python 3.x (auto-detected) |
 
 ## Table of Contents
@@ -66,20 +66,20 @@ swift run
 ```bash
 swift build -c release
 ./build.sh
-open .build/release/NotchPomodoro.app
+open .build/release/VibePomodoro.app
 ```
 
 ### Install to /Applications
 
 ```bash
-cp -r .build/release/NotchPomodoro.app /Applications/
-open /Applications/NotchPomodoro.app
+cp -r .build/release/VibePomodoro.app /Applications/
+open /Applications/VibePomodoro.app
 ```
 
 On first launch the app automatically:
 1. Requests notification authorization.
-2. Installs the Python hook script to `~/.claude/hooks/notch-pomodoro-hook.py`.
+2. Installs the Python hook script to `~/.claude/hooks/vibe-pomodoro-hook.py`.
 3. Registers hook entries in `~/.claude/settings.json` and `~/.codex/hooks.json`.
-4. Starts the Unix domain socket server at `/tmp/notch-pomodoro-claude.sock`.
+4. Starts the Unix domain socket server at `/tmp/vibe-pomodoro-claude.sock`.
 
 See [build-deploy.md](build-deploy.md) for details and verification steps.

@@ -4,14 +4,14 @@
 > - `Sources/Services/Hooks/HookInstaller.swift` (603 lines)
 > - `Sources/Services/Hooks/HookSocketServer.swift` (317 lines)
 > - `Sources/Services/ClaudeSessionManager.swift` (137 lines)
-> - `Sources/Resources/notch-pomodoro-hook.py` (121 lines)
+> - `Sources/Resources/vibe-pomodoro-hook.py` (121 lines)
 > - `Sources/Models/ClaudeModels.swift` (188 lines)
 
 ---
 
 ## A. Overview
 
-The NotchPomodoro hook system is a **five-component pipeline** that enables real-time integration between Claude Code / Codex CLI and the notch-based UI. When a Claude Code or Codex CLI session fires a hook event, the pipeline carries that event through a Python script, a Unix domain socket, a Swift socket server, a session manager, and ultimately into the SwiftUI notch view.
+The vibe-pomodoro hook system is a **five-component pipeline** that enables real-time integration between Claude Code / Codex CLI and the notch-based UI. When a Claude Code or Codex CLI session fires a hook event, the pipeline carries that event through a Python script, a Unix domain socket, a Swift socket server, a session manager, and ultimately into the SwiftUI notch view.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────────┐
@@ -22,11 +22,11 @@ The NotchPomodoro hook system is a **five-component pipeline** that enables real
 │       │                                                                              │
 │       │ fires hook event (JSON via stdin)                                            │
 │       ▼                                                                              │
-│  ① Python Hook Script (notch-pomodoro-hook.py)                                       │
+│  ① Python Hook Script (vibe-pomodoro-hook.py)                                       │
 │       │  reads stdin JSON → builds state dict → sends via AF_UNIX socket             │
 │       │  for PermissionRequest: BLOCKS on recv() for a decision                      │
 │       ▼                                                                              │
-│  ② Unix Domain Socket (/tmp/notch-pomodoro-claude.sock)                              │
+│  ② Unix Domain Socket (/tmp/vibe-pomodoro-claude.sock)                              │
 │       │                                                                              │
 │       ▼                                                                              │
 │  ③ HookSocketServer (Swift, singleton)                                              │
@@ -64,12 +64,12 @@ The pipeline is **bidirectional** for permission requests: the Python script blo
 | `ClaudePaths` | `claudeDir` | `~/.claude` |
 | `ClaudePaths` | `hooksDir` | `~/.claude/hooks` |
 | `ClaudePaths` | `settingsFile` | `~/.claude/settings.json` |
-| `ClaudePaths` | `hookScript` | `~/.claude/hooks/notch-pomodoro-hook.py` |
+| `ClaudePaths` | `hookScript` | `~/.claude/hooks/vibe-pomodoro-hook.py` |
 | `CodexPaths` | `codexDir` | `~/.codex` |
 | `CodexPaths` | `hooksFile` | `~/.codex/hooks.json` |
 | `CodexPaths` | `hookScript` | Reuses `ClaudePaths.hookScript` (shared script) |
 
-Both Claude Code and Codex CLI use the **same Python script** at `~/.claude/hooks/notch-pomodoro-hook.py`.
+Both Claude Code and Codex CLI use the **same Python script** at `~/.claude/hooks/vibe-pomodoro-hook.py`.
 
 ### B.2 Supported Hook Events
 
@@ -129,10 +129,10 @@ The detected path is used both as the shebang line (`#!`) in the installed scrip
 |---|---|
 | `installIfNeeded()` | Writes the Python script to disk (chmod 755) and registers hooks in `~/.claude/settings.json`. Called on app launch. |
 | `isInstalled() -> Bool` | Checks both the script file and settings JSON for the hook identifier. Supports nested and legacy flat formats. |
-| `uninstall()` | Removes the script file and strips all notch-pomodoro entries from settings. |
+| `uninstall()` | Removes the script file and strips all vibe-pomodoro entries from settings. |
 | `installCodexIfNeeded()` | Writes the shared script and registers hooks in `~/.codex/hooks.json`. |
 | `isCodexInstalled() -> Bool` | Checks the script file and `~/.codex/hooks.json` for the hook identifier. |
-| `uninstallCodex()` | Strips all notch-pomodoro entries from Codex hooks.json. |
+| `uninstallCodex()` | Strips all vibe-pomodoro entries from Codex hooks.json. |
 | `isVibeNotchInstalled() -> Bool` | Checks if `claude-island-state.py` appears in any Claude hook command (conflict detection). |
 | `detectClaudeCodeVersion() -> ClaudeCodeVersion?` | Detects Claude Code installation and version (`.v1` or `.v2`). |
 
@@ -149,7 +149,7 @@ Hooks are registered in the **nested format**:
         "hooks": [
           {
             "type": "command",
-            "command": "/usr/bin/python3 /Users/<user>/.claude/hooks/notch-pomodoro-hook.py",
+            "command": "/usr/bin/python3 /Users/<user>/.claude/hooks/vibe-pomodoro-hook.py",
             "timeout": 86400
           }
         ]
@@ -186,19 +186,19 @@ The Python script is stored as a **string literal** inside `hookScriptContent(py
 private static func hookScriptContent(pythonPath: String) -> String {
     return """
     #!\(pythonPath)
-    \"\"\"NotchPomodoro Hook - Sends session state via Unix socket\"\"\"
+    \"\"\"VibePomodoro Hook - Sends session state via Unix socket\"\"\"
     ...
     """
 }
 ```
 
-A standalone copy also exists at `Sources/Resources/notch-pomodoro-hook.py` for reference and version control, but the **runtime copy** is always generated from the embedded string literal to ensure the shebang matches the detected Python path.
+A standalone copy also exists at `Sources/Resources/vibe-pomodoro-hook.py` for reference and version control, but the **runtime copy** is always generated from the embedded string literal to ensure the shebang matches the detected Python path.
 
 ---
 
 ## C. Python Hook Script
 
-**File:** `Sources/Resources/notch-pomodoro-hook.py` (121 lines)
+**File:** `Sources/Resources/vibe-pomodoro-hook.py` (121 lines)
 
 This is a stateless script invoked by Claude Code / Codex CLI on every hook event. Each invocation is a **fresh process** — no state persists between calls.
 
@@ -206,7 +206,7 @@ This is a stateless script invoked by Claude Code / Codex CLI on every hook even
 
 | Constant | Value | Purpose |
 |---|---|---|
-| `SOCKET_PATH` | `"/tmp/notch-pomodoro-claude.sock"` | Unix domain socket path |
+| `SOCKET_PATH` | `"/tmp/vibe-pomodoro-claude.sock"` | Unix domain socket path |
 | `TIMEOUT_SECONDS` | `300` | Socket timeout (5 minutes) |
 
 ### C.2 `send_event(state)` Function
@@ -301,7 +301,7 @@ elif decision == "deny":
         "hookEventName": "PermissionRequest",
         "decision": {
             "behavior": "deny",
-            "message": reason or "Denied via NotchPomodoro"
+            "message": reason or "Denied via vibe-pomodoro"
         }
     }}
     print(json.dumps(output))
@@ -356,7 +356,7 @@ final class HookSocketServer: @unchecked Sendable {
 
 | Constant | Value | Purpose |
 |---|---|---|
-| `socketPath` | `"/tmp/notch-pomodoro-claude.sock"` | Unix domain socket file path |
+| `socketPath` | `"/tmp/vibe-pomodoro-claude.sock"` | Unix domain socket file path |
 | `bufferSize` | `131_072` (128 KB) | Read buffer for incoming JSON |
 | `pollTimeout` | `0.5` seconds | Maximum time to wait for a complete message |
 
@@ -820,7 +820,7 @@ Printed to stdout by the Python script for `PermissionRequest` events:
     "hookEventName": "PermissionRequest",
     "decision": {
       "behavior": "deny",
-      "message": "Denied via NotchPomodoro"
+      "message": "Denied via vibe-pomodoro"
     }
   }
 }
@@ -830,7 +830,7 @@ Printed to stdout by the Python script for `PermissionRequest` events:
 |---|---|---|
 | `hookSpecificOutput.hookEventName` | String | Always `"PermissionRequest"` |
 | `hookSpecificOutput.decision.behavior` | String | `"allow"` or `"deny"` |
-| `hookSpecificOutput.decision.message` | String? | Only present for `"deny"`; defaults to `"Denied via NotchPomodoro"` |
+| `hookSpecificOutput.decision.message` | String? | Only present for `"deny"`; defaults to `"Denied via vibe-pomodoro"` |
 
 ### G.4 Claude Code Settings JSON
 
@@ -844,7 +844,7 @@ Printed to stdout by the Python script for `PermissionRequest` events:
         "hooks": [
           {
             "type": "command",
-            "command": "/usr/bin/python3 ~/.claude/hooks/notch-pomodoro-hook.py",
+            "command": "/usr/bin/python3 ~/.claude/hooks/vibe-pomodoro-hook.py",
             "timeout": null
           }
         ]
@@ -856,7 +856,7 @@ Printed to stdout by the Python script for `PermissionRequest` events:
         "hooks": [
           {
             "type": "command",
-            "command": "/usr/bin/python3 ~/.claude/hooks/notch-pomodoro-hook.py",
+            "command": "/usr/bin/python3 ~/.claude/hooks/vibe-pomodoro-hook.py",
             "timeout": 86400
           }
         ]
@@ -883,7 +883,7 @@ Printed to stdout by the Python script for `PermissionRequest` events:
         "hooks": [
           {
             "type": "command",
-            "command": "/usr/bin/python3 ~/.claude/hooks/notch-pomodoro-hook.py",
+            "command": "/usr/bin/python3 ~/.claude/hooks/vibe-pomodoro-hook.py",
             "timeout": 86400
           }
         ]
@@ -894,7 +894,7 @@ Printed to stdout by the Python script for `PermissionRequest` events:
         "hooks": [
           {
             "type": "command",
-            "command": "/usr/bin/python3 ~/.claude/hooks/notch-pomodoro-hook.py",
+            "command": "/usr/bin/python3 ~/.claude/hooks/vibe-pomodoro-hook.py",
             "timeout": 30
           }
         ]
@@ -1000,7 +1000,7 @@ If the user does not respond within 5 minutes, the Python socket times out, `sen
 
 ### H.3 App Crash During Pending Permission
 
-If the NotchPomodoro app crashes or is killed while a permission request is pending:
+If the vibe-pomodoro app crashes or is killed while a permission request is pending:
 
 1. The `pendingPermissions` dictionary is lost.
 2. The client socket fd is never written to.
@@ -1012,7 +1012,7 @@ If the NotchPomodoro app crashes or is killed while a permission request is pend
 
 ### H.4 Single Socket Endpoint
 
-The server uses a singleton (`HookSocketServer.shared`) with a single Unix socket. If multiple instances of NotchPomodoro were to run simultaneously, the second instance would fail to bind the socket (the first instance holds it). The `unlink` call in `start()` would remove the first instance's socket, breaking its event reception.
+The server uses a singleton (`HookSocketServer.shared`) with a single Unix socket. If multiple instances of vibe-pomodoro were to run simultaneously, the second instance would fail to bind the socket (the first instance holds it). The `unlink` call in `start()` would remove the first instance's socket, breaking its event reception.
 
 ### H.5 JSON Completeness Heuristic
 

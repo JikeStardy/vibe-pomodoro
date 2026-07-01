@@ -377,7 +377,7 @@ class PomodoroTimer: ObservableObject {
             return config
         }
         // Fallback: try partial decode
-        print("[NotchPomodoro] Config decode failed, attempting migration fallback")
+        print("[VibePomodoro] Config decode failed, attempting migration fallback")
         if let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
             return PomodoroConfig(
                 workDuration: dict["workDuration"] as? Int ?? 1500,

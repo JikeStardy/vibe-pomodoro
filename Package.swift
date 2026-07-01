@@ -2,15 +2,15 @@
 import PackageDescription
 
 let package = Package(
-    name: "NotchPomodoro",
+    name: "VibePomodoro",
     platforms: [
         .macOS(.v13)
     ],
     targets: [
         .executableTarget(
-            name: "NotchPomodoro",
+            name: "VibePomodoro",
             path: "Sources",
-            exclude: ["App/Info.plist", "App/NotchPomodoro.entitlements"],
+            exclude: ["App/Info.plist", "App/VibePomodoro.entitlements"],
             resources: [.process("Resources")]
         )
     ]

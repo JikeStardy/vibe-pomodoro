@@ -1,4 +1,4 @@
-# NotchPomodoro 🍅
+# vibe-pomodoro 🍅
 
 > macOS 刘海屏番茄钟 + Claude Code 智能提示
 
@@ -73,7 +73,7 @@ swift build -c release
 Hook 系统在应用启动时**自动安装**，无需手动配置：
 
 1. 检测 `~/.claude` 目录是否存在
-2. 将 Python hook 脚本写入 `~/.claude/hooks/notch-pomodoro-hook.py`
+2. 将 Python hook 脚本写入 `~/.claude/hooks/vibe-pomodoro-hook.py`
 3. 在 `~/.claude/settings.json` 中注册所有支持的事件
 4. 启动 Unix domain socket 服务器监听事件
 
@@ -134,8 +134,8 @@ Sources/
 
 ## 技术实现
 
-- **Hook 通信**：Unix domain socket `/tmp/notch-pomodoro-claude.sock`（chmod 600）
-- **Hook 脚本**：Python 3，自动安装到 `~/.claude/hooks/notch-pomodoro-hook.py`
+- **Hook 通信**：Unix domain socket `/tmp/vibe-pomodoro-claude.sock`（chmod 600）
+- **Hook 脚本**：Python 3，自动安装到 `~/.claude/hooks/vibe-pomodoro-hook.py`
 - **事件总线**：`HookSocketServer` → Combine `PassthroughSubject` → `ClaudeSessionManager` → SwiftUI 视图
 - **状态优先级**：设置 > Claude 审批 > 休息提示 > Claude 通知 > 展开 > 紧凑 > 闲置
 - **窗口层级**：`statusBar + 1`，覆盖菜单栏，所有 Space 可见

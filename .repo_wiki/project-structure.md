@@ -12,7 +12,7 @@ NotchPomodoro/
 ├── Sources/
 │   ├── App/
 │   │   ├── Info.plist               # Bundle metadata (35 lines)
-│   │   ├── NotchPomodoro.entitlements  # Entitlements (11 lines)
+│   │   ├── VibePomodoro.entitlements  # Entitlements (11 lines)
 │   │   └── NotchPomodoroApp.swift   # @main entry + AppDelegate (92 lines)
 │   ├── Controllers/
 │   │   ├── NotchDisplayManager.swift   # Multi-display coordinator (106 lines)
@@ -23,7 +23,7 @@ NotchPomodoro/
 │   │   └── PomodoroTimer.swift       # Timer engine, ObservableObject (397 lines)
 │   ├── Resources/
 │   │   ├── AppIcon.icns             # App icon (binary)
-│   │   └── notch-pomodoro-hook.py    # Python hook script (121 lines)
+│   │   └── vibe-pomodoro-hook.py    # Python hook script (121 lines)
 │   ├── Services/
 │   │   ├── ClaudeSessionManager.swift # Session state machine (137 lines)
 │   │   └── Hooks/
@@ -43,9 +43,9 @@ NotchPomodoro/
 
 | File | Lines | Purpose |
 |---|---|---|
-| `NotchPomodoroApp.swift` | 92 | `@main` entry point. `NotchPomodoroApp` (SwiftUI `App`) with `@NSApplicationDelegateAdaptor`. `AppDelegate` owns `PomodoroTimer`, `NotchDisplayManager`, and `ClaudeSessionManager`. Orchestrates the launch sequence: notification permission → hook installation → socket server → session manager → timer → display manager. Implements `UNUserNotificationCenterDelegate` for foreground notifications. |
+| `NotchPomodoroApp.swift` | 92 | `@main` entry point. `VibePomodoroApp` (SwiftUI `App`) with `@NSApplicationDelegateAdaptor`. `AppDelegate` owns `PomodoroTimer`, `NotchDisplayManager`, and `ClaudeSessionManager`. Orchestrates the launch sequence: notification permission → hook installation → socket server → session manager → timer → display manager. Implements `UNUserNotificationCenterDelegate` for foreground notifications. |
 | `Info.plist` | 35 | Bundle metadata. `LSUIElement = true` (agent app), `CFBundleDevelopmentRegion = zh_CN`, `CFBundleIdentifier = com.nothpomodoro.app` (typo), `CFBundleShortVersionString = 1.0.0`, `LSMinimumSystemVersion = 13.0`. |
-| `NotchPomodoro.entitlements` | 11 | Entitlements. `app-sandbox = false`, `notification = true`. |
+| `VibePomodoro.entitlements` | 11 | Entitlements. `app-sandbox = false`, `notification = true`. |
 
 ### Models (`Sources/Models/`)
 
@@ -127,7 +127,7 @@ The `Utilities/` directory is empty. It contains no Swift files and serves no cu
 ## Known Issues
 
 ### 1. CFBundleIdentifier Typo
-`Info.plist` declares `CFBundleIdentifier` as `com.nothpomodoro.app` — the word "notch" is misspelled as "noth". The correct value should be `com.notchpomodoro.app`. This typo affects the bundle identifier used by the system for the app. It does not cause runtime errors but is inconsistent with the project name.
+`Info.plist` declares `CFBundleIdentifier` as `com.vibepomodoro.app`. The previous typo ("noth") has been fixed during the rename to vibe-pomodoro.
 
 ### 2. Version Mismatch
 `Info.plist` declares `CFBundleShortVersionString` as `1.0.0`, but the in-app UI (rendered in `NotchView.swift`) displays version `1.1.0`. The `Info.plist` value is what macOS sees for the bundle version in Finder, About panels, and System Settings. The UI version string is hardcoded in the SwiftUI view. These should be kept in sync.
