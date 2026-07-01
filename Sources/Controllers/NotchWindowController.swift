@@ -28,7 +28,7 @@ enum NotchDisplayState: Equatable {
         case .settings:
             return NSSize(width: 380, height: 420)
         case .calendar:
-            return NSSize(width: 380, height: 420)
+            return NSSize(width: 380, height: 350)
         case .breakPrompt:
             return NSSize(width: 360, height: 180)
         case .claudeApproval:
@@ -325,7 +325,7 @@ final class NotchWindowController: NSWindowController {
         case .settings:
             return NSSize(width: CGFloat(config.expandedWidth) + 20, height: 420)
         case .calendar:
-            return NSSize(width: CGFloat(config.expandedWidth) + 20, height: 420)
+            return NSSize(width: CGFloat(config.expandedWidth) + 20, height: 350)
         case .breakPrompt:
             return NSSize(width: CGFloat(config.expandedWidth), height: 180)
         case .claudeApproval:

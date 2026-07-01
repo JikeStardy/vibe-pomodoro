@@ -74,7 +74,7 @@ struct NotchView: View {
                 .transition(.opacity.combined(with: .move(edge: .bottom)))
         case .calendar:
             calendarContent
-                .transition(.opacity.combined(with: .move(edge: .bottom)))
+                .transition(.opacity)
         case .breakPrompt:
             breakPromptContent
                 .transition(.opacity.combined(with: .scale(scale: 0.94)))

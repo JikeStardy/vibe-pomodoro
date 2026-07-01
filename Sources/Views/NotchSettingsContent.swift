@@ -361,11 +361,11 @@ extension NotchView {
                         .padding(.vertical, 8)
 
                         // Export button
-                        Button(action: { exportSessions() }) {
+                        Button(action: { exportData() }) {
                             HStack {
                                 Image(systemName: "square.and.arrow.up")
                                     .font(.system(size: 11))
-                                Text("导出数据")
+                                Text("导出备份")
                                     .font(.system(size: 11, weight: .medium))
                             }
                             .foregroundColor(.white.opacity(0.8))
@@ -377,11 +377,11 @@ extension NotchView {
                         .padding(.horizontal, 12)
 
                         // Import button
-                        Button(action: { importSessions() }) {
+                        Button(action: { importData() }) {
                             HStack {
                                 Image(systemName: "square.and.arrow.down")
                                     .font(.system(size: 11))
-                                Text("导入数据")
+                                Text("导入备份")
                                     .font(.system(size: 11, weight: .medium))
                             }
                             .foregroundColor(.white.opacity(0.8))
@@ -527,31 +527,55 @@ extension NotchView {
         timer.config.compactLayout.elements = elements
     }
 
-    private func exportSessions() {
+    private func exportData() {
         let panel = NSSavePanel()
-        panel.nameFieldStringValue = "vibe-pomodoro-sessions.json"
+        panel.nameFieldStringValue = "vibe-pomodoro-backup.json"
         panel.allowedContentTypes = [.json]
         if panel.runModal() == .OK, let url = panel.url {
-            let source = SessionStorage.shared.filePath
-            if FileManager.default.fileExists(atPath: source.path) {
-                try? FileManager.default.copyItem(at: source, to: url)
-            } else {
-                let sessions = SessionStorage.shared.loadSessions()
-                if let data = try? JSONEncoder().encode(sessions) {
-                    try? data.write(to: url, options: .atomic)
-                }
+            let exportData = VibeExportData(
+                config: timer.config,
+                sessions: SessionStorage.shared.loadSessions(),
+                exportDate: Date(),
+                appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
+            )
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = .prettyPrinted
+            encoder.dateEncodingStrategy = .iso8601
+            if let data = try? encoder.encode(exportData) {
+                try? data.write(to: url, options: .atomic)
             }
         }
     }
 
-    private func importSessions() {
+    private func importData() {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.json]
         panel.allowsMultipleSelection = false
         if panel.runModal() == .OK, let url = panel.url {
-            let count = SessionStorage.shared.importFromFile(url)
-            if count > 0 {
+            guard let data = try? Data(contentsOf: url) else { return }
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            // Try new format first (VibeExportData)
+            if let backup = try? decoder.decode(VibeExportData.self, from: data) {
+                // Restore config
+                timer.config = backup.config
+                // Merge sessions
+                let existing = SessionStorage.shared.loadSessions()
+                let existingSet = Set(existing.map { "\($0.startTime.timeIntervalSince1970)-\($0.type.rawValue)" })
+                let newSessions = backup.sessions.filter { !existingSet.contains("\($0.startTime.timeIntervalSince1970)-\($0.type.rawValue)") }
+                if !newSessions.isEmpty {
+                    var all = existing
+                    all.append(contentsOf: newSessions)
+                    all.sort { $0.startTime < $1.startTime }
+                    SessionStorage.shared.saveSessions(all)
+                }
                 timer.refreshTodayStats()
+            } else if (try? JSONDecoder().decode([PomodoroSession].self, from: data)) != nil {
+                // Fallback: old format (just sessions array)
+                let count = SessionStorage.shared.importFromFile(url)
+                if count > 0 {
+                    timer.refreshTodayStats()
+                }
             }
         }
     }

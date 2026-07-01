@@ -94,3 +94,11 @@ struct DailyStats: Identifiable {
         return formatter.string(from: date)
     }
 }
+
+/// Complete app backup: config + session history
+struct VibeExportData: Codable {
+    let config: PomodoroConfig
+    let sessions: [PomodoroSession]
+    let exportDate: Date
+    let appVersion: String
+}
