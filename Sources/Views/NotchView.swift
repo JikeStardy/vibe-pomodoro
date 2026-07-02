@@ -16,6 +16,7 @@ struct NotchView: View {
     @State private var claudeSpinAngle: Double = 0
     @State var questionInput: String = ""
     @State var calendarMonth: Date = Date()
+    @State var selectedCalendarDay: Date? = nil
 
     var body: some View {
         ZStack(alignment: .top) {

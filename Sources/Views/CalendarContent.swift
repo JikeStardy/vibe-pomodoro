@@ -69,7 +69,7 @@ extension NotchView {
                     if let day = day {
                         let dateId = dayId(day)
                         let stat = statsDict[dateId]
-                        calendarDayCell(day: day, stat: stat)
+                        calendarDayCell(day: day, stat: stat, isSelected: Calendar.current.isDate(day, inSameDayAs: selectedCalendarDay ?? .distantPast))
                     } else {
                         Color.clear.frame(height: 28)
                     }
@@ -87,12 +87,31 @@ extension NotchView {
                     .font(.system(size: 10, weight: .medium))
                     .foregroundColor(.white.opacity(0.5))
             }
+
+            // Selected day detail
+            if let selected = selectedCalendarDay {
+                let selectedId = dayId(selected)
+                if let stat = statsDict[selectedId] {
+                    HStack(spacing: 12) {
+                        Text(dayDetailString(selected))
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.white.opacity(0.8))
+                        Label("\(stat.completedSessions) 个番茄", systemImage: "checkmark.circle.fill")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(tomatoRed)
+                        Label("\(stat.focusMinutes) 分钟", systemImage: "flame.fill")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(.white.opacity(0.5))
+                    }
+                    .padding(.top, 4)
+                }
+            }
         }
     }
 
     // MARK: - Calendar Helpers
 
-    func calendarDayCell(day: Date, stat: DailyStats?) -> some View {
+    func calendarDayCell(day: Date, stat: DailyStats?, isSelected: Bool) -> some View {
         let calendar = Calendar.current
         let dayNum = calendar.component(.day, from: day)
         let isToday = calendar.isDateInToday(day)
@@ -105,12 +124,19 @@ extension NotchView {
             .frame(height: 28)
             .background(
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(intensity > 0 ? accentColor.opacity(0.2 + intensity * 0.6) : Color.clear)
+                    .fill(intensity > 0 ? tomatoRed.opacity(0.15 + intensity * 0.7) : Color.clear)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 4)
-                    .stroke(isToday ? accentColor : Color.clear, lineWidth: 1)
+                    .stroke(isSelected ? Color.white : (isToday ? tomatoRed : Color.clear), lineWidth: isSelected ? 1.5 : 1)
             )
+            .onTapGesture {
+                if selectedCalendarDay == day {
+                    selectedCalendarDay = nil
+                } else {
+                    selectedCalendarDay = day
+                }
+            }
     }
 
     func monthYearString(_ date: Date) -> String {
@@ -124,6 +150,14 @@ extension NotchView {
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter.string(from: date)
     }
+
+    func dayDetailString(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "M月d日"
+        return formatter.string(from: date)
+    }
+
+    private var tomatoRed: Color { Color(red: 0.9, green: 0.25, blue: 0.2) }
 
     /// Returns array of optional Dates for the calendar grid (nil = empty cell before first day)
     func calendarDays(for month: Date) -> [Date?] {

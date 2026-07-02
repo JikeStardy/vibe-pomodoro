@@ -108,7 +108,7 @@ class PomodoroTimer: ObservableObject {
         didCompleteWork = false
         pendingBreak = false
         stop()
-        let isLongBreak = currentRound > config.roundsBeforeLongBreak
+        let isLongBreak = currentRound >= config.roundsBeforeLongBreak
         status = isLongBreak ? .longBreak : .shortBreak
         timeRemaining = isLongBreak ? config.longBreakDuration : config.shortBreakDuration
         sessionTotalTime = isLongBreak ? config.longBreakDuration : config.shortBreakDuration
@@ -132,6 +132,10 @@ class PomodoroTimer: ObservableObject {
     /// 停止
     func stop() {
         guard status != .idle else { return }
+        // Reset round counter if stopping during a long break
+        if status == .longBreak {
+            currentRound = 1
+        }
         pendingBreak = false
         if timer != nil {
             timer?.invalidate()
@@ -307,14 +311,13 @@ class PomodoroTimer: ObservableObject {
         
         // 自动切换或等待
         if completedStatus == .working {
-            currentRound += 1
             didCompleteWork = true
             if config.autoStartBreak {
                 startBreak()
             } else {
                 pendingBreak = true
                 status = .idle
-                timeRemaining = currentRound > config.roundsBeforeLongBreak 
+                timeRemaining = currentRound >= config.roundsBeforeLongBreak 
                     ? config.longBreakDuration 
                     : config.shortBreakDuration
                 isPaused = false
@@ -323,6 +326,8 @@ class PomodoroTimer: ObservableObject {
         } else {
             if completedStatus == .longBreak {
                 currentRound = 1
+            } else if completedStatus == .shortBreak {
+                currentRound += 1
             }
             if config.autoStartWork {
                 startWork()
