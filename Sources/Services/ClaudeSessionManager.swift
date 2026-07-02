@@ -27,6 +27,7 @@ class ClaudeSessionManager: ObservableObject {
     private var claudeState = SessionState()
     private var codexState = SessionState()
     private var activeSessions: Set<String> = []
+    private var waitingForInputWorkItem: DispatchWorkItem?
 
     // MARK: - Initializer
 
@@ -103,7 +104,8 @@ class ClaudeSessionManager: ObservableObject {
                 state.toolCount += 1
 
             case "waiting_for_input":
-                state.phase = .waitingForInput
+                // Don't set phase immediately — delay 3s to confirm agent truly stopped
+                // (agent may continue with next tool call)
                 state.toolCount = 0
 
             case "waiting_for_response":
@@ -175,10 +177,29 @@ class ClaudeSessionManager: ObservableObject {
         // avoid re-entrant mutation).
         switch event.status {
         case "waiting_for_input":
-            scheduleAutoDismiss(for: source, after: 5.0)
+            // Delayed notification: only show "task complete" if no new event arrives within 3s
+            waitingForInputWorkItem?.cancel()
+            let workItem = DispatchWorkItem { [weak self] in
+                guard let self = self else { return }
+                self.updateState(source) { state in
+                    // Only transition if still not processing (agent didn't resume)
+                    if state.phase == .processing || state.phase == .idle {
+                        state.phase = .waitingForInput
+                    }
+                }
+                if source == self.activeSource {
+                    self.syncPublishedProperties()
+                }
+                // Auto-dismiss 5s after confirmed notification
+                self.scheduleAutoDismiss(for: source, after: 5.0)
+            }
+            waitingForInputWorkItem = workItem
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0, execute: workItem)
         case "waiting_for_response":
+            waitingForInputWorkItem?.cancel()  // Cancel pending "task complete" if response needed
             scheduleAutoDismiss(for: source, after: 10.0)
         default:
+            waitingForInputWorkItem?.cancel()  // Cancel pending "task complete" on any other event
             // Auto-dismiss any error state (StopFailure or other errors)
             let currentState = source == "codex" ? codexState : claudeState
             if case .error = currentState.phase {
