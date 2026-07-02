@@ -188,18 +188,21 @@ class PomodoroTimer: ObservableObject {
         
         // 切换到下一阶段
         if completedStatus == .working {
-            currentRound += 1
             if config.autoStartBreak {
                 startBreak()
             } else {
                 pendingBreak = true
                 status = .idle
-                timeRemaining = config.shortBreakDuration
+                timeRemaining = currentRound >= config.roundsBeforeLongBreak
+                    ? config.longBreakDuration
+                    : config.shortBreakDuration
                 onStatusChange?(status)
             }
         } else {
             if completedStatus == .longBreak {
                 currentRound = 1
+            } else if completedStatus == .shortBreak {
+                currentRound += 1
             }
             if config.autoStartWork {
                 startWork()
