@@ -8,7 +8,7 @@ final class HookSocketServer: @unchecked Sendable {
 
     // MARK: - Constants
     private static let socketPath = "/tmp/vibe-pomodoro-claude.sock"
-    private static let bufferSize = 131_072  // 128KB read buffer
+    private static let bufferSize = 16_384  // 16KB read buffer (events are typically 1-2KB)
     private static let pollTimeout: TimeInterval = 0.5
 
     // MARK: - Publishers

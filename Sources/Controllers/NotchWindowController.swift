@@ -97,27 +97,16 @@ final class NotchViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
-        // 订阅 Claude 会话阶段变化
-        claudeManager.$currentPhase
+        // Batch-sync all Claude manager properties in a single pass
+        claudeManager.objectWillChange
             .receive(on: RunLoop.main)
-            .assign(to: &$claudePhase)
-
-        // 订阅活跃 AI 源变化
-        claudeManager.$activeSource
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] source in self?.activeSource = source }
-            .store(in: &cancellables)
-
-        // 订阅工具调用次数变化
-        claudeManager.$toolCount
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] count in self?.toolCount = count }
-            .store(in: &cancellables)
-
-        // 订阅最近工具名变化
-        claudeManager.$lastToolName
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] name in self?.activeToolName = name }
+            .sink { [weak self] _ in
+                guard let self = self else { return }
+                self.claudePhase = self.claudeManager.currentPhase
+                self.activeSource = self.claudeManager.activeSource
+                self.toolCount = self.claudeManager.toolCount
+                self.activeToolName = self.claudeManager.lastToolName
+            }
             .store(in: &cancellables)
 
         // 订阅活跃会话数变化

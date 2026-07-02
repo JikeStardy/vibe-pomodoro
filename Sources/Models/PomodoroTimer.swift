@@ -29,6 +29,7 @@ class PomodoroTimer: ObservableObject {
     private var pausedTimeRemaining: Int?
     private var sessionStartTime: Date?
     private var sessionTotalTime: Int = 0
+    private var lastStatsRefresh: Date = .distantPast
     
     // MARK: - Callbacks
     var onStatusChange: ((PomodoroStatus) -> Void)?
@@ -219,6 +220,11 @@ class PomodoroTimer: ObservableObject {
     
     /// 刷新今日统计数据
     func refreshTodayStats() {
+        // Throttle: skip if refreshed less than 10 seconds ago
+        let now = Date()
+        guard now.timeIntervalSince(lastStatsRefresh) >= 10 else { return }
+        lastStatsRefresh = now
+
         let sessions = loadSessions()
         let calendar = Calendar.current
         let todaySessions = sessions.filter { calendar.isDateInToday($0.startTime) }
