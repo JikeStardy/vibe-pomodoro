@@ -14,6 +14,11 @@ extension NotchView {
                 Text(viewModel.activeSource == "codex" ? "Codex CLI 请求权限" : "Claude Code 请求权限")
                     .font(.system(size: 16, weight: .bold))
                     .foregroundColor(claudeAmberColor)
+                if viewModel.pendingApprovalCount > 0 {
+                    Text("(+\(viewModel.pendingApprovalCount))")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(claudeAmberColor.opacity(0.7))
+                }
             }
 
             // Tool name and input preview
