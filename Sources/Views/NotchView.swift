@@ -10,8 +10,6 @@ struct NotchView: View {
     @ObservedObject var claudeManager: ClaudeSessionManager
 
     @State private var hoverDebounce: DispatchWorkItem?
-    @State var isHookInstalled: Bool = false
-    @State var isCodexHookInstalled: Bool = false
     @State private var claudeDotPulsing: Bool = false
     @State private var claudeSpinAngle: Double = 0
     @State var questionInput: String = ""

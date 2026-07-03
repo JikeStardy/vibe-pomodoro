@@ -6,6 +6,7 @@ class SessionStorage {
     static let shared = SessionStorage()
     
     private let fileManager = FileManager.default
+    private let lock = NSLock()
     private var cachedSessions: [PomodoroSession]?
     
     /// Application Support directory for this app
@@ -35,6 +36,8 @@ class SessionStorage {
     
     /// Save all sessions to JSON file
     func saveSessions(_ sessions: [PomodoroSession]) {
+        lock.lock()
+        defer { lock.unlock() }
         cachedSessions = sessions
         guard let data = try? JSONEncoder().encode(sessions) else { return }
         try? data.write(to: filePath, options: .atomic)
@@ -42,14 +45,19 @@ class SessionStorage {
     
     /// Append a single session
     func appendSession(_ session: PomodoroSession) {
+        lock.lock()
+        defer { lock.unlock() }
         var sessions = loadSessions()
         sessions.append(session)
-        saveSessions(sessions)
+        cachedSessions = sessions
+        guard let data = try? JSONEncoder().encode(sessions) else { return }
+        try? data.write(to: filePath, options: .atomic)
     }
     
     /// Import sessions from external file, deduplicate by (startTime, type, duration)
     /// Returns count of newly added sessions
     func importFromFile(_ url: URL) -> Int {
+        invalidateCache()
         guard let data = try? Data(contentsOf: url),
               let imported = try? JSONDecoder().decode([PomodoroSession].self, from: data) else {
             return 0

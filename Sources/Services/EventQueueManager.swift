@@ -98,4 +98,12 @@ class EventQueueManager: ObservableObject {
             self?.startStaleSweep()
         }
     }
+
+    /// Count pending items for a specific source
+    func pendingCount(for source: String) -> Int {
+        lock.lock()
+        let count = queue.filter { $0.source == source }.count
+        lock.unlock()
+        return count
+    }
 }

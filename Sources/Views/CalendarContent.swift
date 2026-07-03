@@ -2,6 +2,26 @@ import SwiftUI
 
 // MARK: - Calendar Content
 
+private enum CalendarFormatters {
+    static let monthYearFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy年M月"
+        return f
+    }()
+
+    static let dayIdFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+
+    static let dayDetailFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "M月d日"
+        return f
+    }()
+}
+
 extension NotchView {
 
     var calendarContent: some View {
@@ -140,21 +160,15 @@ extension NotchView {
     }
 
     func monthYearString(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy年M月"
-        return formatter.string(from: date)
+        CalendarFormatters.monthYearFormatter.string(from: date)
     }
 
     func dayId(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.string(from: date)
+        CalendarFormatters.dayIdFormatter.string(from: date)
     }
 
     func dayDetailString(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "M月d日"
-        return formatter.string(from: date)
+        CalendarFormatters.dayDetailFormatter.string(from: date)
     }
 
     private var tomatoRed: Color { Color(red: 0.9, green: 0.25, blue: 0.2) }

@@ -98,6 +98,7 @@ extension NotchView {
                                         return selected.contains(displayName)
                                     },
                                     set: { newValue in
+                                        guard viewModel.connectedDisplays.contains(displayName) else { return }
                                         var selected = timer.config.selectedDisplayNames
                                         if selected.isEmpty {
                                             selected = viewModel.connectedDisplays.filter { name in
@@ -141,10 +142,10 @@ extension NotchView {
                     settingsSection(title: "AI Hooks") {
                         // Claude Code hook status row
                         HStack(spacing: 8) {
-                            Image(systemName: isHookInstalled ? "checkmark.circle.fill" : "xmark.circle.fill")
+                            Image(systemName: viewModel.isHookInstalled ? "checkmark.circle.fill" : "xmark.circle.fill")
                                 .font(.system(size: 14))
-                                .foregroundColor(isHookInstalled ? Color(red: 0.4, green: 0.86, blue: 0.62) : Color(red: 0.85, green: 0.3, blue: 0.3))
-                            Text(isHookInstalled ? "Hook 已安装" : "Hook 未安装")
+                                .foregroundColor(viewModel.isHookInstalled ? Color(red: 0.4, green: 0.86, blue: 0.62) : Color(red: 0.85, green: 0.3, blue: 0.3))
+                            Text(viewModel.isHookInstalled ? "Hook 已安装" : "Hook 未安装")
                                 .font(.system(size: 12, weight: .medium))
                                 .foregroundColor(.white.opacity(0.8))
                             Spacer()
@@ -167,9 +168,9 @@ extension NotchView {
                             Spacer()
                             Button(action: {
                                 HookInstaller.installIfNeeded()
-                                isHookInstalled = HookInstaller.isInstalled()
+                                viewModel.isHookInstalled = HookInstaller.isInstalled()
                             }) {
-                                Text(isHookInstalled ? "重新安装" : "安装 Hook")
+                                Text(viewModel.isHookInstalled ? "重新安装" : "安装 Hook")
                                     .font(.system(size: 11, weight: .medium))
                                     .foregroundColor(.white)
                                     .padding(.horizontal, 14)
@@ -192,10 +193,10 @@ extension NotchView {
 
                         // Codex status row
                         HStack(spacing: 8) {
-                            Image(systemName: isCodexHookInstalled ? "checkmark.circle.fill" : "xmark.circle.fill")
+                            Image(systemName: viewModel.isCodexHookInstalled ? "checkmark.circle.fill" : "xmark.circle.fill")
                                 .font(.system(size: 14))
-                                .foregroundColor(isCodexHookInstalled ? Color(red: 0.4, green: 0.86, blue: 0.62) : Color(red: 0.85, green: 0.3, blue: 0.3))
-                            Text(isCodexHookInstalled ? "Codex Hook 已安装" : "Codex Hook 未安装")
+                                .foregroundColor(viewModel.isCodexHookInstalled ? Color(red: 0.4, green: 0.86, blue: 0.62) : Color(red: 0.85, green: 0.3, blue: 0.3))
+                            Text(viewModel.isCodexHookInstalled ? "Codex Hook 已安装" : "Codex Hook 未安装")
                                 .font(.system(size: 12, weight: .medium))
                                 .foregroundColor(.white.opacity(0.8))
                             Spacer()
@@ -218,9 +219,9 @@ extension NotchView {
                             Spacer()
                             Button(action: {
                                 HookInstaller.installCodexIfNeeded()
-                                isCodexHookInstalled = HookInstaller.isCodexInstalled()
+                                viewModel.isCodexHookInstalled = HookInstaller.isCodexInstalled()
                             }) {
-                                Text(isCodexHookInstalled ? "重新安装" : "安装 Hook")
+                                Text(viewModel.isCodexHookInstalled ? "重新安装" : "安装 Hook")
                                     .font(.system(size: 11, weight: .medium))
                                     .foregroundColor(.white)
                                     .padding(.horizontal, 14)
@@ -245,8 +246,8 @@ extension NotchView {
                         .padding(.vertical, 4)
                     }
                     .onAppear {
-                        isHookInstalled = HookInstaller.isInstalled()
-                        isCodexHookInstalled = HookInstaller.isCodexInstalled()
+                        viewModel.isHookInstalled = HookInstaller.isInstalled()
+                        viewModel.isCodexHookInstalled = HookInstaller.isCodexInstalled()
                     }
 
                     // 布局

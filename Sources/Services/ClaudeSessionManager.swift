@@ -29,7 +29,7 @@ class ClaudeSessionManager: ObservableObject {
     private var claudeState = SessionState()
     private var codexState = SessionState()
     private var activeSessions: Set<String> = []
-    private var waitingForInputWorkItem: DispatchWorkItem?
+    private var waitingForInputWorkItems: [String: DispatchWorkItem] = [:]
 
     // MARK: - Initializer
 
@@ -201,7 +201,7 @@ class ClaudeSessionManager: ObservableObject {
         switch event.status {
         case "waiting_for_input":
             // Delayed notification: only show "task complete" if no new event arrives within 3s
-            waitingForInputWorkItem?.cancel()
+            waitingForInputWorkItems[source]?.cancel()
             let workItem = DispatchWorkItem { [weak self] in
                 guard let self = self else { return }
                 self.updateState(source) { state in
@@ -216,13 +216,15 @@ class ClaudeSessionManager: ObservableObject {
                 // Auto-dismiss 5s after confirmed notification
                 self.scheduleAutoDismiss(for: source, after: 5.0)
             }
-            waitingForInputWorkItem = workItem
+            waitingForInputWorkItems[source] = workItem
             DispatchQueue.main.asyncAfter(deadline: .now() + 3.0, execute: workItem)
         case "waiting_for_response":
-            waitingForInputWorkItem?.cancel()  // Cancel pending "task complete" if response needed
+            waitingForInputWorkItems[source]?.cancel()  // Cancel pending "task complete" if response needed
+            waitingForInputWorkItems[source] = nil
             scheduleAutoDismiss(for: source, after: 10.0)
         default:
-            waitingForInputWorkItem?.cancel()  // Cancel pending "task complete" on any other event
+            waitingForInputWorkItems[source]?.cancel()  // Cancel pending "task complete" on any other event
+            waitingForInputWorkItems[source] = nil
             // Auto-dismiss any error state (StopFailure or other errors)
             let currentState = source == "codex" ? codexState : claudeState
             if case .error = currentState.phase {

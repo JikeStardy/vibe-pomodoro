@@ -419,6 +419,6 @@ final class HookSocketServer: @unchecked Sendable {
         defer { lock.unlock() }
         // Find the most recent PreToolUse with matching tool name
         guard let toolName = event.tool else { return nil }
-        return toolUseCache.last(where: { $0.toolName == toolName })?.toolUseId
+        return toolUseCache.last(where: { $0.toolName == toolName && Date().timeIntervalSince($0.timestamp) < 60 })?.toolUseId
     }
 }

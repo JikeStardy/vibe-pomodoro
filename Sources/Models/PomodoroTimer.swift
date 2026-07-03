@@ -252,7 +252,6 @@ class PomodoroTimer: ObservableObject {
         timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             self?.tick()
         }
-        RunLoop.main.add(timer!, forMode: .common)
     }
     
     private func pause() {
@@ -276,14 +275,13 @@ class PomodoroTimer: ObservableObject {
         timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             self?.tick()
         }
-        RunLoop.main.add(timer!, forMode: .common)
         onStatusChange?(status)
     }
     
     private func tick() {
         guard let startDate = startDate else { return }
         
-        let elapsed = Int(Date().timeIntervalSince(startDate))
+        let elapsed = Int(Date().timeIntervalSince(startDate).rounded())
         let initialTime = pausedTimeRemaining ?? sessionTotalTime
         
         timeRemaining = max(0, initialTime - elapsed)
@@ -331,6 +329,10 @@ class PomodoroTimer: ObservableObject {
                     : config.shortBreakDuration
                 isPaused = false
                 onStatusChange?(status)
+            }
+            // Auto-reset didCompleteWork after subscribers have time to react
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                self?.didCompleteWork = false
             }
         } else {
             if completedStatus == .longBreak {
@@ -423,7 +425,7 @@ class PomodoroTimer: ObservableObject {
     func getDailyStats(for month: Date) -> [DailyStats] {
         let calendar = Calendar.current
         let sessions = SessionStorage.shared.loadSessions()
-        let range = calendar.range(of: .day, in: .month, for: month)!
+        guard let range = calendar.range(of: .day, in: .month, for: month) else { return [] }
         let year = calendar.component(.year, from: month)
         let monthNum = calendar.component(.month, from: month)
         

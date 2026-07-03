@@ -15,30 +15,6 @@ enum NotchDisplayState: Equatable {
     case claudeApproval    // Claude Code 权限请求 UI
     case claudeQuestion    // Claude Code 问题选择 UI
     case claudeNotification // Claude Code 任务完成/错误通知
-
-    /// 对应窗口尺寸（与硬件刘海上沿对齐，向下生长）
-    var windowSize: NSSize {
-        switch self {
-        case .idle:
-            return NSSize(width: 400, height: 38)
-        case .compact:
-            return NSSize(width: 400, height: 38)
-        case .expanded:
-            return NSSize(width: 360, height: 280)
-        case .settings:
-            return NSSize(width: 380, height: 420)
-        case .calendar:
-            return NSSize(width: 380, height: 350)
-        case .breakPrompt:
-            return NSSize(width: 360, height: 180)
-        case .claudeApproval:
-            return NSSize(width: 400, height: 260)
-        case .claudeQuestion:
-            return NSSize(width: 400, height: 300)
-        case .claudeNotification:
-            return NSSize(width: 360, height: 140)
-        }
-    }
 }
 
 // MARK: - View Model
@@ -75,6 +51,9 @@ final class NotchViewModel: ObservableObject {
     @Published var activeSessionCount: Int = 0
     /// 当前审批请求后排队等待的审批数
     @Published var pendingApprovalCount: Int = 0
+    /// Hook 安装状态
+    @Published var isHookInstalled: Bool = false
+    @Published var isCodexHookInstalled: Bool = false
     private var breakPromptDismissWork: DispatchWorkItem?
 
     let claudeManager: ClaudeSessionManager
@@ -187,12 +166,15 @@ final class NotchViewModel: ObservableObject {
         isHovering = false
         showSettings = false
         showCalendar = false
+        breakPromptDismissWork?.cancel()
+        breakPromptDismissWork = nil
     }
 
     /// 触发休息提示（5秒后自动消失）
     func triggerBreakPrompt() {
         showBreakPrompt = true
         breakPromptDismissWork?.cancel()
+        breakPromptDismissWork = nil
         let work = DispatchWorkItem { [weak self] in
             self?.showBreakPrompt = false
         }
@@ -223,7 +205,7 @@ final class NotchWindowController: NSWindowController {
         self.viewModel = NotchViewModel(timer: timer, claudeManager: claudeManager)
         self.assignedScreen = screen
 
-        let initialSize = viewModel.displayState.windowSize // enum fallback for pre-super.init
+        let initialSize = NSSize(width: CGFloat(timer.config.compactWidth), height: 38)
         let window = NotchWindow(
             contentRect: NSRect(origin: .zero, size: initialSize),
             styleMask: [.borderless, .nonactivatingPanel],
@@ -306,7 +288,7 @@ final class NotchWindowController: NSWindowController {
 
     @objc private func screenParametersChanged() {
         // 确认分配的屏幕仍然连接（frame 非零表示活跃）
-        if NSScreen.screens.contains(where: { $0 == assignedScreen }) {
+        if NSScreen.screens.contains(where: { $0.localizedName == assignedScreen.localizedName }) {
             repositionWindow(animated: false)
         }
     }
