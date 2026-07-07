@@ -36,12 +36,13 @@ struct NotchView: View {
             scheduleHover(hovering)
         }
         .onTapGesture {
-            // 设置态/日历态/Claude审批态/Claude问题态/Claude通知态下不响应主体点击
+            // 设置态/日历态/Claude审批态/Claude问题态/Claude通知态/待审批列表态下不响应主体点击
             guard viewModel.displayState != .settings,
                   viewModel.displayState != .calendar,
                   viewModel.displayState != .claudeApproval,
                   viewModel.displayState != .claudeQuestion,
-                  viewModel.displayState != .claudeNotification else { return }
+                  viewModel.displayState != .claudeNotification,
+                  viewModel.displayState != .claudePendingList else { return }
             withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
                 viewModel.toggleExpansion()
             }
@@ -84,6 +85,9 @@ struct NotchView: View {
         case .claudeNotification:
             claudeNotificationContent
                 .transition(.opacity.combined(with: .scale(scale: 0.94)))
+        case .claudePendingList:
+            claudePendingListContent
+                .transition(.opacity.combined(with: .scale(scale: 0.94)))
         }
     }
 
@@ -117,6 +121,21 @@ struct NotchView: View {
             .frame(maxWidth: .infinity, alignment: .trailing)
             .onAppear { updatePulsingState() }
             .onChange(of: claudeManager.currentPhase) { _ in updatePulsingState() }
+
+            // 待审批请求入口徽章
+            if viewModel.pendingApprovalCount > 0 && viewModel.displayState != .claudeApproval {
+                Button(action: { viewModel.openPendingList() }) {
+                    ZStack {
+                        Circle()
+                            .fill(Color(red: 0.9, green: 0.35, blue: 0.3))
+                            .frame(width: 18, height: 18)
+                        Text("\(viewModel.pendingApprovalCount)")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.white)
+                    }
+                }
+                .buttonStyle(.plain)
+            }
         }
     }
 
@@ -408,6 +427,12 @@ struct NotchView: View {
     // MARK: - Hover handling (with debounce)
 
     private func scheduleHover(_ hovering: Bool) {
+        // 当处于 Claude 交互状态或队列列表时，不响应 hover 展开
+        if hovering {
+            guard viewModel.displayState != .claudeApproval,
+                  viewModel.displayState != .claudeQuestion,
+                  viewModel.displayState != .claudePendingList else { return }
+        }
         hoverDebounce?.cancel()
         // 进入快速响应（避免迟钝），离开延迟（让用户能在内部移动鼠标）
         let delay: Double = hovering ? 0.05 : 0.30

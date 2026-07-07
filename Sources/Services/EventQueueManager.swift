@@ -6,6 +6,7 @@ import Combine
 /// 此管理器维护一个全局 FIFO 队列，确保所有审批都被处理，不会丢失。
 class EventQueueManager: ObservableObject {
     @Published private(set) var pendingCount: Int = 0
+    @Published private(set) var queueItems: [QueuedApproval] = []
 
     struct QueuedApproval {
         let source: String          // "claude" / "codex"
@@ -37,10 +38,12 @@ class EventQueueManager: ObservableObject {
             enqueuedAt: Date()
         ))
         let count = queue.count
+        let items = queue
         lock.unlock()
 
         DispatchQueue.main.async {
             self.pendingCount = count
+            self.queueItems = items
         }
     }
 
@@ -48,12 +51,17 @@ class EventQueueManager: ObservableObject {
     func popNext() -> QueuedApproval? {
         lock.lock()
         guard !queue.isEmpty else {
+            let items = queue
             lock.unlock()
-            DispatchQueue.main.async { self.pendingCount = 0 }
+            DispatchQueue.main.async {
+                self.pendingCount = 0
+                self.queueItems = items
+            }
             return nil
         }
         let item = queue.removeFirst()
         let count = queue.count
+        let items = queue
         lock.unlock()
 
         // Skip stale items
@@ -63,6 +71,7 @@ class EventQueueManager: ObservableObject {
 
         DispatchQueue.main.async {
             self.pendingCount = count
+            self.queueItems = items
         }
         return item
     }
@@ -72,10 +81,12 @@ class EventQueueManager: ObservableObject {
         lock.lock()
         queue.removeAll { $0.isStale }
         let count = queue.count
+        let items = queue
         lock.unlock()
 
         DispatchQueue.main.async {
             self.pendingCount = count
+            self.queueItems = items
         }
     }
 
@@ -84,10 +95,29 @@ class EventQueueManager: ObservableObject {
         lock.lock()
         queue.removeAll { $0.context.toolUseId == toolUseId }
         let count = queue.count
+        let items = queue
         lock.unlock()
 
         DispatchQueue.main.async {
             self.pendingCount = count
+            self.queueItems = items
+        }
+    }
+
+    /// 将指定项移到队列头部，使其成为下一个被 popNext() 取出的项
+    func promoteItem(toolUseId: String) {
+        lock.lock()
+        guard let index = queue.firstIndex(where: { $0.context.toolUseId == toolUseId }) else {
+            lock.unlock()
+            return
+        }
+        let item = queue.remove(at: index)
+        queue.insert(item, at: 0)
+        let items = queue
+        lock.unlock()
+
+        DispatchQueue.main.async {
+            self.queueItems = items
         }
     }
 

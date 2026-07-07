@@ -15,9 +15,19 @@ extension NotchView {
                     .font(.system(size: 16, weight: .bold))
                     .foregroundColor(claudeAmberColor)
                 if viewModel.pendingApprovalCount > 0 {
-                    Text("(+\(viewModel.pendingApprovalCount))")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(claudeAmberColor.opacity(0.7))
+                    Button(action: { viewModel.openPendingList() }) {
+                        HStack(spacing: 3) {
+                            Image(systemName: "list.bullet")
+                                .font(.system(size: 10))
+                            Text("+\(viewModel.pendingApprovalCount)")
+                                .font(.system(size: 12, weight: .semibold))
+                        }
+                        .foregroundColor(claudeAmberColor.opacity(0.9))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Capsule().fill(claudeAmberColor.opacity(0.15)))
+                    }
+                    .buttonStyle(.plain)
                 }
             }
 

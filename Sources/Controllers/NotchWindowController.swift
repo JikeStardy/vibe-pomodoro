@@ -4,7 +4,7 @@ import Combine
 
 // MARK: - Display State
 
-/// 灵动岛显示阶段：闲置 / 紧凑 / 展开 / 设置 / 日历 / Claude审批 / Claude问题 / Claude通知
+/// 灵动岛显示阶段：闲置 / 紧凑 / 展开 / 设置 / 日历 / Claude审批 / Claude问题 / Claude通知 / 待审批列表
 enum NotchDisplayState: Equatable {
     case idle      // 计时器空闲，最小指示器
     case compact   // 计时进行中，紧凑信息
@@ -15,6 +15,7 @@ enum NotchDisplayState: Equatable {
     case claudeApproval    // Claude Code 权限请求 UI
     case claudeQuestion    // Claude Code 问题选择 UI
     case claudeNotification // Claude Code 任务完成/错误通知
+    case claudePendingList  // Claude/Codex 待审批请求队列列表
 }
 
 // MARK: - View Model
@@ -51,6 +52,10 @@ final class NotchViewModel: ObservableObject {
     @Published var activeSessionCount: Int = 0
     /// 当前审批请求后排队等待的审批数
     @Published var pendingApprovalCount: Int = 0
+    /// 是否显示待审批请求队列列表
+    @Published var showPendingList: Bool = false
+    /// 待审批队列项（用于 UI 展示）
+    @Published var queueItems: [EventQueueManager.QueuedApproval] = []
     /// Hook 安装状态
     @Published var isHookInstalled: Bool = false
     @Published var isCodexHookInstalled: Bool = false
@@ -102,19 +107,25 @@ final class NotchViewModel: ObservableObject {
             .sink { [weak self] count in self?.pendingApprovalCount = count }
             .store(in: &cancellables)
 
+        // 订阅待处理队列项变化
+        claudeManager.eventQueue.$queueItems
+            .receive(on: DispatchQueue.main)
+            .assign(to: &$queueItems)
+
         // 多态合并：设置 > 日历 > Claude审批 > Claude问题 > 休息提示 > Claude通知 > 展开 > 紧凑 > 闲置
         Publishers.CombineLatest4(
             Publishers.CombineLatest4($isPinnedExpanded, $isHovering, $isTimerActive, $showSettings),
-            Publishers.CombineLatest($isReady, $showCalendar),
+            Publishers.CombineLatest3($isReady, $showCalendar, $showPendingList),
             $showBreakPrompt,
             $claudePhase
         )
-            .map { quad, readyCalendar, breakPrompt, claude -> NotchDisplayState in
+            .map { quad, readyCalendarPending, breakPrompt, claude -> NotchDisplayState in
                 let (pinned, hovering, active, settings) = quad
-                let (ready, calendar) = readyCalendar
+                let (ready, calendar, pendingList) = readyCalendarPending
                 if settings { return .settings }
                 if calendar { return .calendar }
-                if claude.isWaitingForApproval { return .claudeApproval }
+                if claude.isWaitingForApproval && !pendingList { return .claudeApproval }
+                if pendingList { return .claudePendingList }
                 if claude.isAskingQuestion { return .claudeQuestion }
                 if breakPrompt { return .breakPrompt }
                 if claude.isNotification { return .claudeNotification }
@@ -166,8 +177,19 @@ final class NotchViewModel: ObservableObject {
         isHovering = false
         showSettings = false
         showCalendar = false
+        showPendingList = false
         breakPromptDismissWork?.cancel()
         breakPromptDismissWork = nil
+    }
+
+    /// 打开待审批请求队列列表
+    func openPendingList() {
+        showPendingList = true
+    }
+
+    /// 关闭待审批请求队列列表
+    func closePendingList() {
+        showPendingList = false
     }
 
     /// 触发休息提示（5秒后自动消失）
@@ -313,6 +335,8 @@ final class NotchWindowController: NSWindowController {
             return NSSize(width: CGFloat(config.compactWidth), height: 300)
         case .claudeNotification:
             return NSSize(width: CGFloat(config.expandedWidth), height: 140)
+        case .claudePendingList:
+            return NSSize(width: CGFloat(config.expandedWidth), height: 300)
         }
     }
 
