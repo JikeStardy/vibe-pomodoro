@@ -9,7 +9,7 @@ on:
 jobs:
   build:
     name: Build on macOS
-    runs-on: macos-14
+    runs-on: macos-latest
 
     steps:
       - name: Checkout
@@ -29,3 +29,12 @@ jobs:
 
       - name: Build Release
         run: swift build -c release 2>&1
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: VibePomodoro-build
+          path: |
+            .build/release/*
+            .build/debug/*
+          if-no-files-found: warn
