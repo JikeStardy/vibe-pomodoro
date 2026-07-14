@@ -10,7 +10,7 @@ import Combine
 /// which are all immutable and safe to pass across concurrency boundaries.
 /// Do NOT mutate the wrapped value after initialization.
 struct AnyCodable: Codable, @unchecked Sendable, Equatable {
-    nonisolated(unsafe) let value: Any
+    let value: Any
 
     init(_ value: Any) { self.value = value }
 
